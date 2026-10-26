@@ -2,15 +2,25 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0e1c">
 <title>ニチジョウ・ファイターズ</title>
 <style>
-html,body{margin:0;height:100%;background:#0b0e1c;overflow:hidden;user-select:none}
-canvas{display:block;margin:0 auto;outline:none}
+html,body{margin:0;height:100%;background:#0b0e1c;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+#wrap{position:fixed;top:env(safe-area-inset-top,0px);right:env(safe-area-inset-right,0px);bottom:env(safe-area-inset-bottom,0px);left:env(safe-area-inset-left,0px);display:flex;align-items:center;justify-content:center;touch-action:none}
+canvas{display:block;outline:none;touch-action:none;-webkit-touch-callout:none}
+#rotate{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0b0e1c;color:#fff;font:800 26px "Hiragino Sans","Noto Sans CJK JP",sans-serif;text-align:center;touch-action:none}
+#rotate .ph{width:70px;height:120px;border:6px solid #b8f2e6;border-radius:14px;animation:rot 1.8s ease-in-out infinite}
+#rotate small{font-size:16px;color:#c9d1ff;font-weight:700}
+@keyframes rot{0%,25%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}
 </style>
 </head>
 <body>
-<canvas id="c" tabindex="0"></canvas>
+<div id="wrap"><canvas id="c" tabindex="0"></canvas></div>
+<div id="rotate"><div class="ph"></div><div>横向きにしてね</div><small>スマホを横にすると遊べます</small></div>
 <script>
 'use strict';
 // ===================== 基本設定 =====================
@@ -18,15 +28,20 @@ const W = 1280, H = 720, STEP = 1000 / 60;
 const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic","Meiryo","Noto Sans CJK JP","Noto Sans JP",sans-serif';
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let baseTf = 1;
+// タッチ端末の判定(スマホ・タブレット)。タイトル画面で手動切り替えも可能
+const IS_TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches || (('ontouchstart' in window) && !matchMedia('(pointer: fine)').matches); } catch (e) { return false; } })();
+const wrapEl = document.getElementById('wrap'), rotateEl = document.getElementById('rotate');
 function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  const s = Math.min(innerWidth / W, innerHeight / H);
+  // タッチ端末は描画負荷を抑えるため DPR を 2 までに制限
+  const dpr = Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 2 : 4);
+  const aw = wrapEl.clientWidth || innerWidth, ah = wrapEl.clientHeight || innerHeight;
+  const s = Math.min(aw / W, ah / H);
   cv.style.width = (W * s) + 'px'; cv.style.height = (H * s) + 'px';
-  cv.style.marginTop = Math.max(0, (innerHeight - H * s) / 2) + 'px';
   cv.width = Math.round(W * s * dpr); cv.height = Math.round(H * s * dpr);
-  baseTf = s * dpr;
+  baseTf = cv.width / W;
+  if (typeof checkOrientation === 'function') checkOrientation();
 }
-addEventListener('resize', resize); resize();
+addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 120)); resize();
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -51,7 +66,141 @@ addEventListener('blur', () => keys.clear());
 addEventListener('mousedown', () => { cv.focus(); initAudio(); });
 function readInput(pi) {
   if (game.scene === 'match' && game.ais && game.ais[pi]) return game.ais[pi].out;
+  if (pi === 0 && game.mobile && game.scene === 'match') return mergeInput(readKeys(0), touchOut);
   return readKeys(pi);
+}
+function mergeInput(a, b) {
+  const o = {};
+  for (const k of ['l', 'r', 'u', 'd', 'a', 's', 'g']) { o[k] = !!(a[k] || b[k]); o['p' + k] = !!(a['p' + k] || b['p' + k]); }
+  return o;
+}
+
+// ===================== タッチ・クリック操作 =====================
+// uiBtns: 毎フレームの描画時に登録される「タップできる領域」(論理座標 1280x720)
+let uiBtns = [], uiQueue = [];
+const uiDown = new Map();
+function uiBtn(x, y, w, h, fn, direct) { uiBtns.push({ x, y, w, h, fn, direct }); }
+function toLogical(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+function uiHit(p) {
+  for (let i = uiBtns.length - 1; i >= 0; i--) { const b = uiBtns[i]; if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return b; }
+  return null;
+}
+// バーチャルパッドの配置(論理座標)
+const TC = {
+  stickArea: W * 0.45, R: 72, knob: 34, home: { x: 190, y: 555 },
+  btns: [
+    { k: 'a', label: 'A', sub: '攻撃', x: 1165, y: 600, r: 64, color: '#ff5e6c' },
+    { k: 's', label: 'B', sub: '強攻撃', x: 1035, y: 655, r: 50, color: '#ffb23d' },
+    { k: 'g', label: 'ガード', sub: '', x: 1048, y: 524, r: 46, color: '#4da3ff' },
+    { k: 'j', label: 'ジャンプ', sub: '', x: 1182, y: 462, r: 44, color: '#3ddc97' },
+    { k: 'c', label: 'つかみ', sub: '', x: 1076, y: 418, r: 36, color: '#c77dff' }   // つかみ = ガード+A を1ボタンで
+  ]
+};
+const touch = { stick: null, btns: new Map(), pressed: new Set() };
+let touchOut = { l: false, r: false, u: false, d: false, a: false, s: false, g: false, pl: false, pr: false, pu: false, pd: false, pa: false, ps: false, pg: false };
+const tpState = { up: false, tilt: false, prev: {}, prevUp: false, prevJ: false };
+function controlsActive() { return game.mobile && game.scene === 'match' && !game.paused && game.endTimer < 0; }
+function btnsAt(p) {
+  const s = new Set();
+  for (const b of TC.btns) if (Math.hypot(p.x - b.x, p.y - b.y) < b.r * 1.12) s.add(b.k);
+  return s;
+}
+function heldButtons() { const h = new Set(); touch.btns.forEach(set => set.forEach(k => h.add(k))); return h; }
+function resetTouch() { touch.stick = null; touch.btns.clear(); touch.pressed.clear(); tpState.up = false; }
+function moveStick(st, p) {
+  st.x = p.x; st.y = p.y;
+  // 指が大きく離れたら土台がついてくる(フローティング)
+  const dx = st.x - st.bx, dy = st.y - st.by, d = Math.hypot(dx, dy), lim = TC.R * 1.25;
+  if (d > lim) { st.bx += dx / d * (d - lim); st.by += dy / d * (d - lim); }
+}
+addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  initAudio();
+  const p = toLogical(e);
+  const b = uiHit(p);
+  if (b) { e.preventDefault(); uiDown.set(e.pointerId, b); return; }
+  if (!controlsActive()) return;
+  e.preventDefault();
+  try { cv.setPointerCapture && e.target === cv && cv.setPointerCapture(e.pointerId); } catch (err) {}
+  if (p.x < TC.stickArea && !touch.stick) {
+    const bx = clamp(p.x, TC.R + 12, TC.stickArea - TC.R), by = clamp(p.y, 130 + TC.R, H - TC.R - 8);
+    touch.stick = { id: e.pointerId, bx, by, x: p.x, y: p.y };
+    moveStick(touch.stick, p);
+  } else if (p.x >= TC.stickArea) {
+    const s = btnsAt(p); touch.btns.set(e.pointerId, s); s.forEach(k => touch.pressed.add(k));
+  }
+}, { passive: false });
+addEventListener('pointermove', e => {
+  if (touch.stick && touch.stick.id === e.pointerId) { e.preventDefault(); moveStick(touch.stick, toLogical(e)); return; }
+  if (touch.btns.has(e.pointerId)) {
+    e.preventDefault();
+    const old = touch.btns.get(e.pointerId), s = btnsAt(toLogical(e));
+    s.forEach(k => { if (!old.has(k)) touch.pressed.add(k); });   // ボタン間スライドでも押せる
+    touch.btns.set(e.pointerId, s);
+  }
+}, { passive: false });
+function pointerEnd(e) {
+  const b = uiDown.get(e.pointerId);
+  if (b) {
+    uiDown.delete(e.pointerId);
+    const nb = e.type === 'pointerup' && uiHit(toLogical(e));
+    // uiBtns は毎フレーム作り直されるので、同じ領域かどうかで判定(最新の処理を使う)
+    if (nb && nb.x === b.x && nb.y === b.y && nb.w === b.w && nb.h === b.h) { if (nb.direct) nb.fn(); else uiQueue.push(nb.fn); }
+  }
+  if (touch.stick && touch.stick.id === e.pointerId) touch.stick = null;
+  touch.btns.delete(e.pointerId);
+}
+addEventListener('pointerup', pointerEnd); addEventListener('pointercancel', pointerEnd);
+addEventListener('lostpointercapture', e => { if (e.type === 'lostpointercapture' && !e.isTrusted) pointerEnd(e); });
+// スクロール・ズーム・長押しメニュー・テキスト選択を防ぐ
+['touchstart', 'touchmove', 'touchend', 'gesturestart', 'gesturechange', 'dblclick'].forEach(t => document.addEventListener(t, e => { if (e.cancelable) e.preventDefault(); }, { passive: false }));
+['contextmenu', 'selectstart', 'dragstart'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+// 1tick ごとにタッチ状態を仮想入力へ変換(キーボードと同じ形式)
+function computeTouch() {
+  const o = { l: false, r: false, d: false, a: false, s: false, g: false };
+  const st = touch.stick;
+  if (st && controlsActive()) {
+    const dx = (st.x - st.bx) / TC.R, dy = (st.y - st.by) / TC.R;
+    o.l = dx < -0.33; o.r = dx > 0.33;
+    // 軽く上に倒す(傾け)= 上入力だけ → ↑+A で上攻撃 / ↑+B で上強攻撃・復帰技(ジャンプしない)
+    if (!tpState.tilt && dy < -0.3) tpState.tilt = true; else if (tpState.tilt && dy > -0.2) tpState.tilt = false;
+    if (!tpState.up && dy < -0.62) tpState.up = true;         // 大きく上にはじく → ジャンプ
+    else if (tpState.up && dy > -0.28) tpState.up = false;    // 戻せばもう一度ジャンプできる
+    o.d = dy > 0.55;
+  } else tpState.up = tpState.tilt = false;
+  const held = controlsActive() ? heldButtons() : new Set(), pr = controlsActive() ? touch.pressed : new Set();
+  const grabB = held.has('c');
+  o.a = held.has('a') || grabB; o.s = held.has('s'); o.g = held.has('g') || grabB;
+  if (pr.has('c')) { pr.add('a'); pr.add('g'); }
+  const jb = held.has('j'), out = {};
+  for (const k in o) { out[k] = o[k]; out['p' + k] = (o[k] && !tpState.prev[k]) || pr.has(k); }
+  out.u = tpState.up || tpState.tilt || jb;
+  out.pu = (tpState.up && !tpState.prevUp) || (jb && !tpState.prevJ) || pr.has('j');
+  tpState.prev = o; tpState.prevUp = tpState.up; tpState.prevJ = jb;
+  touch.pressed.clear();
+  touchOut = out;
+}
+const CAN_FS = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function toggleFullscreen() {
+  try {
+    if (isFullscreen()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!rq) return;
+    Promise.resolve(rq.call(el, { navigationUI: 'hide' })).then(() => {
+      try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (err) {}
+      setTimeout(resize, 150);
+    }).catch(() => {});
+  } catch (err) {}
+}
+function checkOrientation() { try { checkOrientation2(); } catch (err) {} }
+function checkOrientation2() {
+  const portrait = !!(typeof game !== 'undefined' && game.mobile) && innerHeight > innerWidth * 1.05;
+  rotateEl.style.display = portrait ? 'flex' : 'none';
+  if (portrait && typeof game !== 'undefined' && game.scene === 'match' && game.endTimer < 0 && !game.paused) { game.paused = true; game.pauseSel = 0; resetTouch(); }
 }
 function readKeys(pi) {
   const k = P_KEYS[pi], o = {};
@@ -158,6 +307,7 @@ const BLAST = { x1: -300, x2: 1580, y1: -420, y2: 1020 };
 
 // ===================== ゲーム状態 =====================
 const game = {
+  mobile: IS_TOUCH, editSlot: 0,
   scene: 'title', t: 0, fade: 1, titleSel: 0, stocks: 3,
   sel: [{ ci: 0, ready: false }, { ci: 3, ready: false }], selTimer: -1, ctrl: [0, 0], ais: [null, null], hist: [[], []], matchT: 0, kos: [],
   fighters: [], hitstop: 0, shake: 0, countdown: 0, goTimer: 0, endTimer: -1, winner: -1,
@@ -167,7 +317,7 @@ let frameCount = 0;
 const particles = [];
 const cam = { x: 640, y: 380, z: 1, sx: 0, sy: 0 };
 
-function setScene(s) { game.scene = s; game.t = 0; game.fade = 1; }
+function setScene(s) { game.scene = s; game.t = 0; game.fade = 1; resetTouch(); }
 
 function makeFighter(pi, ci, alt) {
   const c = CHARS[ci];
@@ -786,6 +936,9 @@ class CpuAI {
 function tick() {
   frameCount++; game.t++;
   framePressed = new Set(pressedQ); pressedQ.clear();
+  if (uiQueue.length) { const q = uiQueue; uiQueue = []; q.forEach(fn => fn()); }
+  computeTouch();
+  if (frameCount % 30 === 0) checkOrientation();
   if (framePressed.has('KeyM')) muted = !muted;
   if (game.fade > 0) game.fade = Math.max(0, game.fade - 0.08);
   if (game.banner && --game.banner.life <= 0) game.banner = null;
@@ -801,8 +954,17 @@ function tick() {
 function tickTitle() {
   const mi = menuInput();
   if (mi.up || mi.down) { game.titleSel = 1 - game.titleSel; sfx('menu'); }
-  if (mi.ok && game.t > 10) { sfx('ok'); if (game.titleSel === 0) { game.sel[0].ready = game.sel[1].ready = false; game.selTimer = -1; setScene('select'); } else setScene('howto'); }
+  if (mi.ok && game.t > 10) titleAction(game.titleSel);
 }
+function goSelect() {
+  game.sel[0].ready = game.sel[1].ready = false; game.selTimer = -1;
+  if (game.mobile) { game.ctrl[0] = 0; if (!game.ctrl[1]) game.ctrl[1] = 3; game.editSlot = 0; }
+  setScene('select');
+}
+function titleAction(i) { game.titleSel = i; sfx('ok'); if (i === 0) goSelect(); else setScene('howto'); }
+function pauseAction(i) { sfx('ok'); game.paused = false; resetTouch(); if (i === 1) goSelect(); else if (i === 2) setScene('title'); }
+function resultAction(i) { game.resultSel = i; sfx('ok'); if (i === 0) startMatch(); else if (i === 1) goSelect(); else setScene('title'); }
+function setMobile(on) { game.mobile = on; resetTouch(); checkOrientation(); resize(); }
 function tickHowto() { const mi = menuInput(); if ((mi.ok || mi.back) && game.t > 10) { sfx('back'); setScene('title'); } }
 function ctrlLabel(lv) { return lv > 0 ? 'CPU Lv' + lv + ' ' + CPU_LV[lv].name : '人間'; }
 function selOperators(i) {
@@ -817,6 +979,7 @@ function tickSelect() {
   const fp = framePressed;
   if (fp.has('KeyE') || fp.has('BracketRight')) { game.stocks = Math.min(5, game.stocks + 1); sfx('menu'); }
   if (fp.has('KeyQ') || fp.has('BracketLeft')) { game.stocks = Math.max(1, game.stocks - 1); sfx('menu'); }
+  if (game.mobile) { game.ctrl[0] = 0; if (!game.ctrl[1]) game.ctrl[1] = 3; }
   const used = [false, false];
   game.sel.forEach(x => x.justReady = false);
   for (let i = 0; i < 2; i++) {
@@ -851,12 +1014,7 @@ function tickMatch() {
     const mi = menuInput();
     if (mi.up) { game.pauseSel = (game.pauseSel + 2) % 3; sfx('menu'); }
     if (mi.down) { game.pauseSel = (game.pauseSel + 1) % 3; sfx('menu'); }
-    if (mi.ok) {
-      sfx('ok');
-      if (game.pauseSel === 0) game.paused = false;
-      else if (game.pauseSel === 1) { game.paused = false; game.sel[0].ready = game.sel[1].ready = false; setScene('select'); }
-      else { game.paused = false; setScene('title'); }
-    }
+    if (mi.ok) pauseAction(game.pauseSel);
     return;
   }
   game.matchT++;
@@ -899,12 +1057,7 @@ function tickResult() {
   if (game.t < 40) return;
   if (mi.up) { game.resultSel = (game.resultSel + 2) % 3; sfx('menu'); }
   if (mi.down) { game.resultSel = (game.resultSel + 1) % 3; sfx('menu'); }
-  if (mi.ok) {
-    sfx('ok');
-    if (game.resultSel === 0) startMatch();
-    else if (game.resultSel === 1) { game.sel[0].ready = game.sel[1].ready = false; setScene('select'); }
-    else setScene('title');
-  }
+  if (mi.ok) resultAction(game.resultSel);
 }
 function updateCam() {
   const xs = [640], ys = [420];
@@ -1381,6 +1534,7 @@ function drawOffscreen() {
 // ===================== シーン描画 =====================
 function render() {
   ctx.setTransform(baseTf, 0, 0, baseTf, 0, 0);
+  uiBtns = [];
   switch (game.scene) {
     case 'title': renderTitle(); break;
     case 'howto': renderHowto(); break;
@@ -1390,6 +1544,50 @@ function render() {
   }
   if (game.fade > 0) { ctx.fillStyle = 'rgba(11,14,28,' + game.fade + ')'; ctx.fillRect(0, 0, W, H); }
   if (muted) text('🔇 ミュート中 (M)', W - 16, 20, 14, '#ffffffaa', 'right', '600');
+}
+function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+function pillBtn(x, y, w, h, label, on, size, fn, direct) {
+  ctx.fillStyle = on ? 'rgba(255,255,255,0.95)' : 'rgba(10,12,28,0.7)'; rr(x, y, w, h, h / 2); ctx.fill();
+  ctx.strokeStyle = on ? '#ffd23d' : 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+  text(label, x + w / 2, y + h / 2, size || 20, on ? '#1b2033' : '#eef1ff', 'center', '800');
+  if (fn) uiBtn(x, y, w, h, fn, direct);
+}
+// ===== スマホ用バーチャルパッド(半透明) =====
+function drawTouchControls() {
+  ctx.save();
+  const st = touch.stick, bx = st ? st.bx : TC.home.x, by = st ? st.by : TC.home.y, R = TC.R;
+  let kx = bx, ky = by;
+  if (st) { const dx = st.x - bx, dy = st.y - by, d = Math.hypot(dx, dy), m = Math.min(d, R); if (d > 0) { kx = bx + dx / d * m; ky = by + dy / d * m; } }
+  // 土台
+  ctx.fillStyle = st ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.09)';
+  ctx.beginPath(); ctx.arc(bx, by, R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = st ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, R * 0.42, 0, Math.PI * 2); ctx.stroke();
+  // 方向の三角(入力中の方向は明るく)
+  const tp = touchOut, dirs = [[0, -1, tp.u && tpState.up], [0, 1, tp.d], [-1, 0, tp.l], [1, 0, tp.r]];
+  dirs.forEach(([dx, dy, on]) => {
+    const cx = bx + dx * (R - 14), cy = by + dy * (R - 14), px = -dy, py = dx;
+    ctx.fillStyle = on ? 'rgba(255,230,120,0.95)' : 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.moveTo(cx + dx * 8, cy + dy * 8); ctx.lineTo(cx - dx * 4 + px * 8, cy - dy * 4 + py * 8); ctx.lineTo(cx - dx * 4 - px * 8, cy - dy * 4 - py * 8); ctx.closePath(); ctx.fill();
+  });
+  // ノブ
+  ctx.fillStyle = st ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)';
+  ctx.beginPath(); ctx.arc(kx, ky, TC.knob, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2.5; ctx.stroke();
+  if (!st) text('ここを指でグリグリ', bx, by + R + 20, 15, 'rgba(255,255,255,0.7)', 'center', '800', 3);
+  // ボタン
+  const held = heldButtons();
+  TC.btns.forEach(b => {
+    const on = held.has(b.k), r = on ? b.r * 0.93 : b.r;
+    ctx.fillStyle = hexA(b.color, on ? 0.65 : 0.3);
+    ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = on ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)'; ctx.lineWidth = on ? 4 : 3; ctx.stroke();
+    if (b.label.length === 1) {
+      text(b.label, b.x, b.y - (b.sub ? 9 : 0), b.r * 0.62, 'rgba(255,255,255,0.95)', 'center', '900', 4);
+      if (b.sub) text(b.sub, b.x, b.y + b.r * 0.42, 15, 'rgba(255,255,255,0.92)', 'center', '800', 3);
+    } else text(b.label, b.x, b.y, b.r < 40 ? 16 : b.label.length > 3 ? 17 : 19, 'rgba(255,255,255,0.95)', 'center', '900', 4);
+  });
+  ctx.restore();
 }
 function renderTitle() {
   drawBackground(false);
@@ -1403,14 +1601,17 @@ function renderTitle() {
   const bob = Math.sin(frameCount * 0.04) * 4;
   text('NICHIJO FIGHTERS', W / 2, 108 + bob, 30, '#b8f2e6', 'center', '800', 0);
   text('ニチジョウ・ファイターズ', W / 2, 168 + bob, 72, '#ffffff', 'center', '900', 10);
-  text('2人対戦 ふっとばしアクション', W / 2, 228, 22, '#ffd23d', 'center', '700', 5);
+  text(game.mobile ? 'CPUと対戦 ふっとばしアクション' : '2人対戦 ふっとばしアクション', W / 2, 228, 22, '#ffd23d', 'center', '700', 5);
   const items = ['対戦をはじめる', '操作説明・あそびかた'];
   items.forEach((s, i) => {
     const y = 300 + i * 64, on = game.titleSel === i;
     ctx.fillStyle = on ? 'rgba(255,255,255,0.95)' : 'rgba(10,12,28,0.6)'; rr(W / 2 - 200, y - 26, 400, 52, 26); ctx.fill();
     text((on ? '▶ ' : '') + s, W / 2, y, 26, on ? '#1b2033' : '#dfe4ff', 'center', '800');
+    uiBtn(W / 2 - 200, y - 26, 400, 52, () => { if (game.t > 10) titleAction(i); });
   });
-  text('W/S・↑/↓ でえらぶ　　F・,(カンマ)・Enter で決定　　M で音のON/OFF', W / 2, 690, 17, '#c9d1ff', 'center', '600');
+  pillBtn(24, 636, 270, 50, game.mobile ? '📱 スマホ操作:ON' : '⌨ スマホ操作:OFF', game.mobile, 19, () => { sfx('menu'); setMobile(!game.mobile); });
+  if (CAN_FS) pillBtn(W - 224, 636, 200, 50, isFullscreen() ? '全画面をやめる' : '⛶ 全画面', false, 19, toggleFullscreen, true);
+  text(game.mobile ? 'タップでえらんでね(横向きがおすすめ)' : 'W/S・↑/↓ でえらぶ　　F・,(カンマ)・Enter で決定　　M で音のON/OFF', W / 2, 690, 17, '#c9d1ff', 'center', '600');
 }
 function drawControls(pi, x, y) {
   const c = P_COLORS[pi];
@@ -1429,7 +1630,7 @@ function renderHowto() {
   drawBackground(false);
   ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W, H);
   text('操作説明・あそびかた', W / 2, 44, 36, '#ffffff', 'center', '900', 6);
-  drawControls(0, 340, 110); drawControls(1, 940, 110);
+  if (game.mobile) drawTouchHelp(); else { drawControls(0, 340, 110); drawControls(1, 940, 110); }
   text('キャラクター:ネコ(動物 / バランス)・ニンジン(野菜 / スピード)・マグカップ(日用品 / パワー)・ハブラシ(日用品 / リーチ)', W / 2, 396, 17, '#ffd23d', 'center', '700', 4);
   // 読み合い
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(60, 420, 560, 250, 18); ctx.fill();
@@ -1445,13 +1646,35 @@ function renderHowto() {
   };
   arrow(tri[0], tri[1], 'に勝つ'); arrow(tri[1], tri[2], 'に勝つ'); arrow(tri[2], tri[0], 'に勝つ');
   tri.forEach(t => { ctx.fillStyle = '#ffffff'; rr(t[0] - 44, t[1] - 20, 88, 40, 20); ctx.fill(); text(t[2], t[0], t[1], 20, '#1b2033', 'center', '900'); });
-  text('つかみ = ガード中に攻撃 (H+F / ガード+,)', 340, 656, 15, '#eef1ff', 'center', '700');
+  text(game.mobile ? 'つかみ = つかみボタン(ガード+Aでも可)' : 'つかみ = ガード中に攻撃 (H+F / ガード+,)', 340, 656, 15, '#eef1ff', 'center', '700');
   // ルール
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(660, 420, 560, 250, 18); ctx.fill();
   text('ルール', 940, 448, 22, '#ffd23d', 'center', '900');
-  const rules = ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', 'ガード中に←→で回避、↓でその場回避', '空中でガードを押すと空中回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜5)と対戦', 'Esc / P でポーズ'];
+  const rules = game.mobile
+    ? ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', 'ガード+スティック←→で回避、↓でその場回避', '空中でガードを押すと空中回避', 'キャラ選択で相手キャラとCPUの強さ(Lv1〜5)を選ぶ', '左上の Ⅱ ボタンでポーズ']
+    : ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', 'ガード中に←→で回避、↓でその場回避', '空中でガードを押すと空中回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜5)と対戦', 'Esc / P でポーズ'];
   rules.forEach((r, i) => text('・' + r, 690, 480 + i * 24, 16, '#eef1ff', 'left', '700'));
-  text('決定キー または ガードキー でもどる', W / 2, 700, 15, '#c9d1ff', 'center', '600');
+  text(game.mobile ? 'どこかをタップでもどる' : '決定キー または ガードキー でもどる', W / 2, 700, 15, '#c9d1ff', 'center', '600');
+  uiBtn(0, 0, W, H, () => { if (game.t > 10) { sfx('back'); setScene('title'); } });
+}
+function drawTouchHelp() {
+  ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(60, 80, 1160, 290, 18); ctx.fill(); ctx.strokeStyle = P_COLORS[0]; ctx.lineWidth = 3; ctx.stroke();
+  text('スマホでの操作', W / 2, 106, 24, P_COLORS[0], 'center', '900');
+  // スティック図
+  const sx = 180, sy = 240;
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(sx, sy, 62, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(sx + 18, sy - 14, 28, 0, Math.PI * 2); ctx.fill();
+  text('画面の左半分', sx, sy + 86, 15, '#c9d1ff', 'center', '700');
+  ['スティック ←→:移動', 'スティックを大きく↑:ジャンプ(もう一度で2段)', 'スティックを軽く↑+A/B:上攻撃・復帰技', 'スティック↓:すり抜け / 急降下', '指を置いた場所にスティックが出ます'].forEach((r, i) => text(r, 270, 160 + i * 38, 19, i === 4 ? '#ffd23d' : '#eef1ff', 'left', '700'));
+  // ボタン図
+  const bs = [['A', '#ff5e6c', '攻撃(↑+Aで上攻撃)'], ['B', '#ffb23d', '強攻撃(空中↑+Bで復帰技)'], ['ガ', '#4da3ff', 'ガード(+←→で回避)'], ['ジ', '#3ddc97', 'ジャンプボタン'], ['つ', '#c77dff', 'つかみ(ガードに勝つ)']];
+  bs.forEach((b, i) => {
+    const y = 146 + i * 40;
+    ctx.fillStyle = hexA(b[1], 0.45); ctx.beginPath(); ctx.arc(720, y, 19, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.stroke();
+    text(b[0], 720, y, 18, '#fff', 'center', '900', 3);
+    text(b[2], 752, y, 19, '#eef1ff', 'left', '700');
+  });
+  text('ガード+A でもつかめます', 700, 350, 17, '#ffd23d', 'left', '700');
 }
 function statBar(x, y, label, v, color) {
   text(label, x, y, 13, '#c9d1ff', 'left', '700');
@@ -1460,6 +1683,7 @@ function statBar(x, y, label, v, color) {
 function renderSelect() {
   drawBackground(false);
   text('キャラクターをえらぼう', W / 2, 46, 36, '#ffffff', 'center', '900', 6);
+  const mob = game.mobile;
   const cw = 250, gap = 20, x0 = W / 2 - (cw * 4 + gap * 3) / 2;
   for (let i = 0; i < 4; i++) {
     const c = CHARS[i], x = x0 + i * (cw + gap), y = 92;
@@ -1479,7 +1703,13 @@ function renderSelect() {
     text(c.type, x + cw / 2, y + 243, 15, '#1b2033', 'center', '900');
     text(c.desc, x + cw / 2, y + 276, 13, '#dfe4ff', 'center', '600');
     ['スピード', 'パワー', '重さ', 'ジャンプ', 'リーチ'].forEach((l, k) => statBar(x + 34, y + 302 + k * 16, l, c.bars[k], c.color));
+    if (mob) uiBtn(x, y, cw, 380, () => {
+      if (game.selTimer > 0) return;
+      const es = game.editSlot; game.sel[es].ci = i; sfx('menu');
+      if (es === 0) game.editSlot = 1;
+    });
   }
+  if (mob) { renderSelectMobile(); return; }
   // 下部パネル
   for (let i = 0; i < 2; i++) {
     const s = game.sel[i], x = i === 0 ? 80 : W - 520, y = 500;
@@ -1501,6 +1731,47 @@ function renderSelect() {
     text('バトル開始!', W / 2, 360, 64, '#ffd23d', 'center', '900', 10);
   }
   text('Esc でタイトルへ', W / 2, 700, 14, '#c9d1ff', 'center', '600');
+}
+function renderSelectMobile() {
+  text(game.editSlot === 0 ? 'カードをタップして「あなた」のキャラをえらんでね' : 'カードをタップして「あいて(CPU)」のキャラをえらんでね', W / 2, 486, 17, '#ffd23d', 'center', '800', 4);
+  for (let i = 0; i < 2; i++) {
+    const s = game.sel[i], x = i === 0 ? 70 : W - 530, y = 502, ed = game.editSlot === i;
+    ctx.fillStyle = 'rgba(10,12,28,0.82)'; rr(x, y, 460, 140, 18); ctx.fill();
+    ctx.strokeStyle = ed ? '#ffd23d' : P_COLORS[i]; ctx.lineWidth = ed ? 5 : 3; ctx.stroke();
+    uiBtn(x, y, 460, 140, () => { game.editSlot = i; sfx('menu'); });
+    text(i === 0 ? 'あなた (P1)' : 'あいて (CPU)', x + 20, y + 24, 20, P_COLORS[i], 'left', '900');
+    if (ed) { ctx.fillStyle = '#ffd23d'; rr(x + 300, y + 10, 145, 28, 14); ctx.fill(); text('えらび中', x + 372, y + 24, 15, '#1b2033', 'center', '900'); }
+    else text('タップで変更', x + 440, y + 24, 14, '#c9d1ff', 'right', '700');
+    text(CHARS[s.ci].name, x + 20, y + 62, i === 0 ? 36 : 30, '#ffffff', 'left', '900');
+    if (i === 0) text(CHARS[s.ci].type, x + 20, y + 106, 17, '#c9d1ff', 'left', '700');
+    else {
+      const lv = game.ctrl[1];
+      text('Lv' + lv + ' ' + CPU_LV[lv].name, x + 440, y + 62, 18, '#ffd23d', 'right', '900');
+      for (let n = 1; n <= 5; n++) {
+        const bx = x + 18 + (n - 1) * 86, on = lv === n;
+        pillBtn(bx, y + 86, 78, 42, 'Lv' + n, on, 19, () => { game.ctrl[1] = n; game.editSlot = 1; sfx('menu'); });
+      }
+    }
+  }
+  // ストックと開始ボタン
+  text('ストック', W / 2, 516, 16, '#c9d1ff', 'center', '700');
+  pillBtn(W / 2 - 104, 530, 52, 48, '◀', false, 20, () => { game.stocks = Math.max(1, game.stocks - 1); sfx('menu'); });
+  pillBtn(W / 2 + 52, 530, 52, 48, '▶', false, 20, () => { game.stocks = Math.min(5, game.stocks + 1); sfx('menu'); });
+  text(game.stocks + '', W / 2, 555, 40, '#ffffff', 'center', '900', 5);
+  const pulse = 1 + Math.sin(frameCount * 0.12) * 0.03;
+  ctx.save(); ctx.translate(W / 2, 630); ctx.scale(pulse, pulse);
+  ctx.fillStyle = '#ffd23d'; rr(-115, -30, 230, 60, 30); ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.stroke();
+  text('バトル開始!', 0, 0, 26, '#1b2033', 'center', '900'); ctx.restore();
+  uiBtn(W / 2 - 115, 600, 230, 60, () => {
+    if (game.selTimer > 0 || game.t < 8) return;
+    game.ctrl[0] = 0; if (!game.ctrl[1]) game.ctrl[1] = 3;
+    game.sel[0].ready = game.sel[1].ready = true; sfx('ok');
+  });
+  pillBtn(16, 14, 140, 46, '◀ もどる', false, 19, () => { sfx('back'); game.sel[0].ready = game.sel[1].ready = false; setScene('title'); });
+  if (game.selTimer > 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 300, W, 120);
+    text('バトル開始!', W / 2, 360, 64, '#ffd23d', 'center', '900', 10);
+  }
 }
 function renderMatch() {
   drawBackground(true);
@@ -1526,6 +1797,14 @@ function renderMatch() {
     const b = game.banner; ctx.globalAlpha = Math.min(1, b.life / 15);
     text(b.text, W / 2, H / 2 - 120, b.text === 'GAME!' ? 130 : 44, b.color, 'center', '900', 10); ctx.globalAlpha = 1;
   }
+  if (game.mobile && !game.paused) {
+    if (game.endTimer < 0) drawTouchControls();
+    // ポーズボタン(左上)
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.arc(44, 42, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(35, 30, 6, 24); ctx.fillRect(47, 30, 6, 24);
+    if (game.endTimer < 0) uiBtn(8, 6, 74, 74, () => { if (game.scene === 'match' && game.endTimer < 0 && !game.paused) { game.paused = true; game.pauseSel = 0; resetTouch(); sfx('menu'); } });
+  }
   if (game.paused) {
     ctx.fillStyle = 'rgba(5,6,16,0.7)'; ctx.fillRect(0, 0, W, H);
     text('ポーズ', W / 2, 220, 60, '#ffffff', 'center', '900', 8);
@@ -1533,7 +1812,9 @@ function renderMatch() {
       const y = 320 + i * 64, on = game.pauseSel === i;
       ctx.fillStyle = on ? '#ffffff' : 'rgba(255,255,255,0.1)'; rr(W / 2 - 170, y - 25, 340, 50, 25); ctx.fill();
       text(s, W / 2, y, 24, on ? '#1b2033' : '#dfe4ff', 'center', '800');
+      uiBtn(W / 2 - 170, y - 25, 340, 50, () => { if (game.paused) { game.pauseSel = i; pauseAction(i); } });
     });
+    if (game.mobile && CAN_FS) pillBtn(W / 2 - 110, 540, 220, 46, isFullscreen() ? '全画面をやめる' : '⛶ 全画面', false, 18, toggleFullscreen, true);
   }
 }
 function renderResult() {
@@ -1560,8 +1841,9 @@ function renderResult() {
     const y = 480 + i * 62, on = game.resultSel === i;
     ctx.fillStyle = on ? '#ffffff' : 'rgba(10,12,28,0.6)'; rr(740, y - 25, 400, 50, 25); ctx.fill();
     text((on ? '▶ ' : '') + s, 940, y, 22, on ? '#1b2033' : '#dfe4ff', 'center', '800');
+    if (game.t >= 40) uiBtn(740, y - 25, 400, 50, () => { if (game.scene === 'result') resultAction(i); });
   });
-  if (game.t >= 40) text('W/S・↑/↓ でえらぶ　F・,・Enter で決定', 940, 680, 15, '#c9d1ff', 'center', '600');
+  if (game.t >= 40) text(game.mobile ? 'タップでえらんでね' : 'W/S・↑/↓ でえらぶ　F・,・Enter で決定', 940, 680, 15, '#c9d1ff', 'center', '600');
 }
 
 // ===================== メインループ(固定60fps) =====================
@@ -1586,7 +1868,7 @@ function simMatch(c0, c1, lv0, lv1, maxT) {
   let winner = game.scene === 'result' ? game.winner : (fs[0].stocks !== fs[1].stocks ? (fs[0].stocks > fs[1].stocks ? 0 : 1) : (fs[0].percent <= fs[1].percent ? 0 : 1));
   return { winner, timeout: game.scene !== 'result', ticks: game.matchT, kos: game.kos.slice(), stocks: fs.map(f => f.stocks), dealt: fs.map(f => f.stats.dealt) };
 }
-window.__NF = { game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
+window.__NF = { game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
 </script>
 </body>
 </html>

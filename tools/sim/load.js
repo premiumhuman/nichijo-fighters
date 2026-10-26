@@ -7,7 +7,7 @@ function loadGame(file) {
   const ctxStub = new Proxy({}, { get: (t, k) => k === 'createLinearGradient' ? () => ({ addColorStop: noop }) : (k in t ? t[k] : noop), set: (t, k, v) => { t[k] = v; return true; } });
   const canvas = { style: {}, width: 0, height: 0, getContext: () => ctxStub, focus: noop };
   const sandbox = { console, Math, Set, Map, Object, Array, JSON, Proxy, performance: { now: () => 0 },
-    document: { getElementById: () => canvas }, addEventListener: noop, requestAnimationFrame: () => 0, cancelAnimationFrame: noop,
+    document: { getElementById: () => canvas, addEventListener: noop }, addEventListener: noop, requestAnimationFrame: () => 0, cancelAnimationFrame: noop,
     innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1 };
   sandbox.window = sandbox;
   vm.createContext(sandbox);

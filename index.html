@@ -50,12 +50,16 @@ addEventListener('keyup', e => { keys.delete(e.code); if (GAME_CODES.has(e.code)
 addEventListener('blur', () => keys.clear());
 addEventListener('mousedown', () => { cv.focus(); initAudio(); });
 function readInput(pi) {
+  if (game.scene === 'match' && game.ais && game.ais[pi]) return game.ais[pi].out;
+  return readKeys(pi);
+}
+function readKeys(pi) {
   const k = P_KEYS[pi], o = {};
   for (const n in k) { o[n] = k[n].some(c => keys.has(c)); o['p' + n] = k[n].some(c => framePressed.has(c)); }
   return o;
 }
 function menuInput() {
-  const a = readInput(0), b = readInput(1), fp = framePressed;
+  const a = readKeys(0), b = readKeys(1), fp = framePressed;
   return {
     up: a.pu || b.pu, down: a.pd || b.pd, left: a.pl || b.pl, right: a.pr || b.pr,
     ok: a.pa || b.pa || fp.has('Enter') || fp.has('Space') || fp.has('NumpadEnter'),
@@ -114,14 +118,14 @@ const CHARS = [
     w: 46, h: 62, run: 6.4, gAcc: 1.2, air: 4.8, aAcc: 0.6, jump: 13.8, dj: 12.8, grav: 0.64, fall: 10.5, ff: 15.5,
     weight: 100, jumps: 2, power: 1.0, reach: 1.0, lag: 0, bars: [3, 3, 3, 3, 3] },
   { id: 'ninjin', name: 'ニンジン', type: 'スピード', desc: '野菜。速くて軽い。葉っぱで手数勝負', color: '#ff7a1a', alt: '#ffd23d',
-    w: 40, h: 62, run: 8.2, gAcc: 1.6, air: 5.7, aAcc: 0.8, jump: 14.4, dj: 13.4, grav: 0.74, fall: 12, ff: 17.5,
-    weight: 80, jumps: 2, power: 0.84, reach: 0.9, lag: -2, bars: [5, 2, 1, 4, 2] },
+    w: 40, h: 62, run: 8.2, gAcc: 1.6, air: 5.7, aAcc: 0.8, jump: 14.4, dj: 14.6, grav: 0.74, fall: 10.5, ff: 16,
+    weight: 88, jumps: 2, power: 0.94, reach: 0.94, lag: -2, endlag: 0.95, upB: 1.4, bars: [5, 2, 2, 4, 2] },
   { id: 'mug', name: 'マグカップ', type: 'パワー', desc: '日用品。重くて熱々コーヒーが強烈', color: '#4a90e2', alt: '#e84a5f',
     w: 56, h: 66, run: 5.1, gAcc: 0.9, air: 4.0, aAcc: 0.45, jump: 13.4, dj: 11.8, grav: 0.72, fall: 11.5, ff: 16,
-    weight: 128, jumps: 2, power: 1.3, reach: 1.06, lag: 3, bars: [2, 5, 5, 2, 3] },
+    weight: 128, jumps: 2, power: 1.18, reach: 1.06, lag: 2, bars: [2, 5, 5, 2, 3] },
   { id: 'brush', name: 'ハブラシ', type: 'リーチ・空中', desc: '日用品。長いリーチとふわっと3段ジャンプ', color: '#2ec4b6', alt: '#ff7eb6',
-    w: 32, h: 78, run: 5.8, gAcc: 1.05, air: 5.0, aAcc: 0.55, jump: 12.4, dj: 11.2, grav: 0.47, fall: 7.8, ff: 12,
-    weight: 86, jumps: 3, power: 0.94, reach: 1.38, lag: 1, bars: [3, 3, 2, 5, 5] }
+    w: 38, h: 78, run: 5.8, gAcc: 1.05, air: 5.0, aAcc: 0.55, jump: 12.4, dj: 10.5, grav: 0.47, fall: 7.8, ff: 12,
+    weight: 80, jumps: 3, power: 0.93, reach: 1.19, lag: 0, endlag: 0.9, upB: 0.9, bars: [3, 3, 1, 4, 5] }
 ];
 const P_COLORS = ['#ff4d5e', '#4da3ff'];
 
@@ -155,7 +159,7 @@ const BLAST = { x1: -300, x2: 1580, y1: -420, y2: 1020 };
 // ===================== ゲーム状態 =====================
 const game = {
   scene: 'title', t: 0, fade: 1, titleSel: 0, stocks: 3,
-  sel: [{ ci: 0, ready: false }, { ci: 3, ready: false }], selTimer: -1,
+  sel: [{ ci: 0, ready: false }, { ci: 3, ready: false }], selTimer: -1, ctrl: [0, 0], ais: [null, null], hist: [[], []], matchT: 0, kos: [],
   fighters: [], hitstop: 0, shake: 0, countdown: 0, goTimer: 0, endTimer: -1, winner: -1,
   paused: false, pauseSel: 0, resultSel: 0, banner: null
 };
@@ -181,6 +185,7 @@ function startMatch() {
   game.fighters = [makeFighter(0, s[0].ci, false), makeFighter(1, s[1].ci, s[0].ci === s[1].ci)];
   game.hitstop = 0; game.shake = 0; game.countdown = 150; game.goTimer = 0; game.endTimer = -1; game.winner = -1;
   game.paused = false; particles.length = 0;
+  game.ais = game.ctrl.map((lv, i) => lv > 0 ? new CpuAI(i, lv) : null); game.hist = [[], []]; game.matchT = 0; game.kos = [];
   cam.x = 640; cam.y = 380; cam.z = 1;
   setScene('match');
 }
@@ -195,6 +200,7 @@ function boxOf(f, m) {
 }
 function hurtOf(f) { return { x: f.x - f.w / 2, y: f.y - f.h, w: f.w, h: f.h }; }
 function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+function recOf(f, m) { return Math.max(4, Math.round(m.rec * (f.st.endlag || 1))); }
 function startupOf(f, m) { return Math.max(2, m.startup + (m.kind === 'strong' ? f.st.lag : 0)); }
 function activeHitbox(f) {
   const m = f.move;
@@ -206,9 +212,9 @@ function activeHitbox(f) {
 function startMove(f, id, inp) {
   const m = MOVES[id];
   if (inp && !m.rel) { const d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0); if (d && f.grounded) f.facing = d; }
-  f.state = 'attack'; f.move = m; f.t = 0; f.hitIds.clear();
+  f.state = 'attack'; f.move = m; f.t = 0; f.hitIds.clear(); f.atkSeq = (f.atkSeq || 0) + 1;
   if (id === 'recover') {
-    f.canUpB = false; f.vy = -(f.st.jump + 2.2); f.ff = false; f.kbx *= 0.3; f.kby = 0;
+    f.canUpB = false; f.vy = -(f.st.jump + 2.2) * (f.st.upB || 1); f.ff = false; f.kbx *= 0.3; f.kby = 0;
     const d = inp ? (inp.r ? 1 : 0) - (inp.l ? 1 : 0) : 0; f.vx = d * 3; if (d) f.facing = d;
     sfx('dj');
   }
@@ -281,6 +287,7 @@ function land(f) {
     case 'respawn': break;
   }
 }
+const NOSLIDE = new Set(['attack', 'landing', 'shield', 'shieldstun', 'shieldDrop', 'roll', 'spot', 'jumpsquat', 'holding']);
 function physics(f) {
   const px = f.x, py = f.y, wasGround = f.grounded;
   f.x += f.vx + f.kbx; f.y += f.vy + f.kby;
@@ -297,6 +304,14 @@ function physics(f) {
         if (!wasGround) land(f);
         f.vy = 0;
         break;
+      }
+    }
+  }
+  // 地上技・ガード・回避などでは足場から滑り落ちない(歩き/ダッシュでは落ちられる)
+  if (wasGround && !f.grounded && NOSLIDE.has(f.state) && f.vy + f.kby >= 0) {
+    for (const p of PLATS) {
+      if (Math.abs(p.y - py) < 0.5 && px + hw > p.x1 && px - hw < p.x2) {
+        f.x = clamp(f.x, p.x1 - hw + 1, p.x2 + hw - 1); f.y = p.y; f.grounded = true; f.onSoft = p.soft; f.vx = 0; f.kbx = 0; break;
       }
     }
   }
@@ -369,7 +384,7 @@ function updateFighter(f, inp, o) {
       else { airDrift(f, inp, m.id === 'recover' ? 0.55 : 1); if (inp.pd && f.vy > -3) f.ff = true; }
       if (!f.grounded) gravity(f, m.id === 'recover' && f.t < su + 6 ? 0.25 : 1);
       if (m.kind === 'strong' && f.t === su) sfx('swing');
-      if (f.t >= su + m.active + m.rec) {
+      if (f.t >= su + m.active + recOf(f, m)) {
         f.move = null;
         if (m.id === 'recover') f.state = 'helpless';
         else f.state = f.grounded ? 'idle' : 'air';
@@ -463,7 +478,7 @@ function applyDamage(a, b, m, dir, isThrow) {
   b.vx = 0; b.vy = 0; b.ff = false; b.move = null;
   b.state = 'hitstun'; b.t = 0; b.stunLen = Math.max(8, Math.floor(kb * 1.75));
   b.jumps = Math.max(b.jumps, 1); b.canUpB = true; b.canDodge = true;
-  b.flash = 6; b.pctShake = 14; b.facing = -dir;
+  b.flash = 6; b.pctShake = 14; b.facing = -dir; b.lastHitT = game.matchT;
   const strong = m.kind === 'strong' || isThrow || kb > 14;
   game.hitstop = Math.min(18, Math.floor(3 + dmg * 0.45 + (kb > 16 ? 5 : 0)));
   game.shake = Math.max(game.shake, strong ? Math.min(18, 4 + kb * 0.45) : 2 + dmg * 0.3);
@@ -486,10 +501,11 @@ function resolveHits() {
     if (isIntangible(b)) continue;
     if (!overlap(hb, hurtOf(b))) continue;
     if (a.move.grab && (!b.grounded || b.state === 'holding')) continue;
-    hits.push([a, b, hb]);
+    hits.push([a, b, hb, a.move]);
   }
-  for (const [a, b, hb] of hits) {
-    const m = a.move; if (!m) continue;
+  // 相打ちは両方当たる(判定は同時)
+  for (const [a, b, hb, m] of hits) {
+    if (!m || (m.grab && a.state !== 'attack')) continue;
     a.hitIds.add(b.pi);
     if (m.grab) {
       if (b.state === 'attack' && b.move && b.move.grab && b.t >= startupOf(b, b.move)) continue;
@@ -515,6 +531,7 @@ function resolveHits() {
 function checkBlast(f, o) {
   if (f.state === 'dead' || f.state === 'respawn') return;
   if (f.x < BLAST.x1 || f.x > BLAST.x2 || f.y > BLAST.y2 || f.y - f.h < BLAST.y1) {
+    game.kos.push({ pi: f.pi, pct: f.percent, sd: f.lastHitT == null || game.matchT - f.lastHitT > 300, t: game.matchT });
     f.stocks--; f.state = 'dead'; f.t = 0; f.move = null; o.stats.kos++;
     if (o.state === 'holding') { o.state = 'idle'; }
     // 画面端に爆発エフェクト
@@ -545,6 +562,226 @@ function updateParticles() {
 }
 function showBanner(text, color, life) { game.banner = { text, color, life: life || 70, max: life || 70 }; }
 
+// ===================== CPU(人間らしいAI) =====================
+// AIは「仮想キーボード」だけを操作する。押す/離す → 人間と同じ readInput → 同じバッファ・物理。
+// 知覚は反応時間ぶん遅れた相手のスナップショットのみ。フレーム単位の最適行動はしない。
+const CPU_LV = [null,
+  // react:[平均, ばらつき](フレーム) 60f=1秒 / interval:判断間隔 / err:間合いのブレ(px)
+  { name: 'はじめて',   react: [23, 5], interval: [16, 26], err: 46, mistake: 0.30, guard: 0.22, punish: 0.22, read: 0.15, recov: 0.62, aggro: 0.45 },
+  { name: 'かんたん',   react: [20, 4], interval: [13, 22], err: 36, mistake: 0.21, guard: 0.38, punish: 0.38, read: 0.32, recov: 0.78, aggro: 0.52 },
+  { name: 'ふつう',     react: [17, 3], interval: [11, 18], err: 26, mistake: 0.14, guard: 0.52, punish: 0.52, read: 0.5,  recov: 0.88, aggro: 0.58 },
+  { name: 'つよい',     react: [14, 3], interval: [9, 14],  err: 18, mistake: 0.09, guard: 0.66, punish: 0.66, read: 0.65, recov: 0.95, aggro: 0.62 },
+  { name: 'めっちゃつよい', react: [12, 2], interval: [7, 11], err: 12, mistake: 0.05, guard: 0.76, punish: 0.76, read: 0.78, recov: 0.98, aggro: 0.66 }
+];
+const VKEYS = ['l', 'r', 'u', 'd', 'a', 's', 'g'];
+const HOLD = 1e9;
+const ri = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
+const gauss = () => (Math.random() + Math.random() + Math.random() + Math.random() - 2) * 1.732; // 平均0・SD≈1
+function snapshot(f) {
+  const m = f.move;
+  return { x: f.x, y: f.y, vx: f.vx + f.kbx, vy: f.vy + f.kby, state: f.state, t: f.t, grounded: f.grounded, percent: f.percent,
+    facing: f.facing, w: f.w, h: f.h, mid: m ? m.id : null, kind: m ? m.kind : null, su: m ? startupOf(f, m) : 0,
+    active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps };
+}
+function reachOf(f, id, oppHalfW) { const m = MOVES[id], r = f.st.reach; return (Math.abs(m.box.x) + m.box.w / 2) * r + oppHalfW * 0.85; }
+class CpuAI {
+  constructor(pi, lv) {
+    this.pi = pi; this.lv = lv; this.P = CPU_LV[lv];
+    this.hold = {}; this.prevOn = {}; this.out = {};
+    VKEYS.forEach(k => { this.hold[k] = 0; this.prevOn[k] = false; this.out[k] = false; this.out['p' + k] = false; });
+    this.queue = []; this.now = 0; this.cool = ri(20, 45); this.delay = this.sampleDelay();
+    // 個体ごとのクセ(毎試合すこし違う)
+    this.habit = { jab: rnd(0.8, 1.3), smash: rnd(0.6, 1.1), grab: rnd(0.5, 1.0), shield: rnd(0.5, 1.0), wait: rnd(0.5, 1.0), air: rnd(0.4, 0.9) };
+    this.seen = { shield: 1, attack: 1, grab: 1 }; this.lastSeq = 0;
+    this.reactSeq = -1; this.punishSeq = -1; this.respawnWait = ri(15, 60); this.busyUntil = 0; this.moveDir = 0; this.edgeMargin = rnd(-10, 25) + (lv - 3) * 6;
+  }
+  sampleDelay() { const [m, sd] = this.P.react; return Math.max(9, Math.round(m + gauss() * sd)); }
+  view() { const h = game.hist[1 - this.pi]; return h[Math.max(0, h.length - 1 - this.delay)]; }
+  // --- 仮想キー操作 ---
+  tap(k, dur, at) { this.queue.push({ at: this.now + (at || 0), k, dur: dur || ri(4, 8) }); }
+  setMove(d) { this.moveDir = d; this.hold.l = d < 0 ? HOLD : 0; this.hold.r = d > 0 ? HOLD : 0; }
+  releaseAll() { this.queue.length = 0; VKEYS.forEach(k => { if (this.hold[k] >= HOLD || k === 'g') this.hold[k] = 0; }); this.moveDir = 0; }
+  busy(n) { this.busyUntil = this.now + n; }
+  update(f, o) {
+    this.now++;
+    const v = this.view();
+    if (v) {
+      this.observe(v);
+      this.react(f, v);
+      const offstage = !this.onStage(f) && !f.grounded && !['dead', 'respawn'].includes(f.state);
+      if ((this.now >= this.busyUntil || offstage) && --this.cool <= 0) {
+        this.decide(f, o, v);
+        const [a, b] = this.P.interval; this.cool = ri(a, b);
+        this.delay = this.sampleDelay();
+      }
+    }
+    this.edgeSafety(f);
+    // キュー処理(同じキーは一度離してからでないと押せない=人間と同じ)
+    for (let i = 0; i < this.queue.length; i++) {
+      const q = this.queue[i];
+      if (q.at > this.now) continue;
+      if (this.hold[q.k] > 0 && this.hold[q.k] < HOLD) continue;
+      if (this.prevOn[q.k] && this.hold[q.k] === 0) continue;
+      if (this.hold[q.k] >= HOLD) { this.hold[q.k] = 0; continue; } // 押しっぱなし中なら一度離す
+      this.hold[q.k] = q.dur; this.queue.splice(i, 1); i--;
+    }
+    for (const k of VKEYS) {
+      const on = this.hold[k] > 0;
+      this.out[k] = on; this.out['p' + k] = on && !this.prevOn[k]; this.prevOn[k] = on;
+      if (on && this.hold[k] < HOLD) this.hold[k]--;
+    }
+    return this.out;
+  }
+  observe(v) {
+    if (v.seq !== this.lastSeq) { this.lastSeq = v.seq; if (v.mid === 'grab') this.seen.grab++; else if (v.mid) this.seen.attack++; }
+    if (v.state === 'shield' && this.now % 10 === 0) this.seen.shield += 0.5;
+    if (this.now % 120 === 0) for (const k in this.seen) this.seen[k] = 1 + (this.seen[k] - 1) * 0.85; // 古い記憶は薄れる
+  }
+  onStage(f) { return f.x > STAGE.x1 - 4 && f.x < STAGE.x2 + 4 && f.y <= STAGE.y + 2; }
+  edgeSafety(f) {
+    // 空中:ステージ上空から外へ流れすぎない(多少のはみ出しは人間らしく許す)
+    if (!f.grounded && f.y < STAGE.y && f.state !== 'hitstun' && this.onStage(f)) {
+      const m = this.edgeMargin;
+      if (this.hold.l >= HOLD && f.x < STAGE.x1 + m) this.hold.l = 0;
+      if (this.hold.r >= HOLD && f.x > STAGE.x2 - m) this.hold.r = 0;
+      return;
+    }
+    // 地上で崖っぷちに向かって歩き続けない(人間も崖は見ている)
+    if (!f.grounded || f.onSoft) return;
+    if (this.hold.l >= HOLD && f.x < STAGE.x1 + 26) this.hold.l = 0;
+    if (this.hold.r >= HOLD && f.x > STAGE.x2 - 26) this.hold.r = 0;
+  }
+  react(f, v) {
+    // 相手の強攻撃の「ため」を見てからガード(見えるのは反応時間ぶん前の姿)
+    const dx = v.x - f.x, adx = Math.abs(dx);
+    const canAct = f.grounded && (f.state === 'idle' || f.state === 'run' || f.state === 'shield' || f.state === 'landing');
+    if (v.state === 'attack' && v.kind === 'strong' && v.t < v.su && v.seq !== this.reactSeq) {
+      this.reactSeq = v.seq;
+      const danger = adx < 150 && Math.abs(v.y - f.y) < 90;
+      if (danger && canAct && Math.random() < this.P.guard) {
+        this.releaseAll();
+        const r = Math.random();
+        if (r < 0.72) { this.hold.g = 0; this.tap('g', ri(24, 40), ri(1, 3)); this.busy(ri(20, 30)); }
+        else if (r < 0.88) { this.tap('g', ri(10, 14), 1); this.tap(dx > 0 ? 'l' : 'r', ri(4, 6), ri(3, 5)); this.busy(26); } // 回避で逃げる
+        else { this.setMove(dx > 0 ? -1 : 1); this.busy(ri(12, 20)); } // 走って離れる
+      }
+    }
+    // 相手の大きなスキ(空振りの後隙)に反撃
+    if (v.state === 'attack' && v.t >= v.su + v.active && v.seq !== this.punishSeq && (v.kind === 'strong' || v.mid === 'grab')) {
+      this.punishSeq = v.seq;
+      const myR = reachOf(f, 'fsmash', v.w / 2);
+      if (adx < myR + 25 && Math.abs(v.y - f.y) < 40 && (canAct && f.state !== 'shield' || f.state === 'shield') && Math.random() < this.P.punish) {
+        this.releaseAll();
+        const d = dx > 0 ? 1 : -1;
+        if (f.state === 'shield' && adx < reachOf(f, 'grab', v.w / 2) + 10) { this.tap('g', 12, 0); this.tap('a', 5, 1); }
+        else if (adx < reachOf(f, 'jab', v.w / 2) && Math.random() < 0.5) { this.tap(d < 0 ? 'l' : 'r', 3, 0); this.tap('a', 5, 1); }
+        else { this.tap(d < 0 ? 'l' : 'r', 5, 0); this.tap('s', 5, 1); }
+        this.busy(ri(18, 28));
+      }
+    }
+  }
+  recover(f) {
+    const side = f.x < 640 ? -1 : 1, edgeX = side < 0 ? STAGE.x1 : STAGE.x2;
+    const outside = side < 0 ? f.x < STAGE.x1 - f.w * 0.3 : f.x > STAGE.x2 + f.w * 0.3;
+    const outX = Math.abs(f.x - edgeX), below = f.y - STAGE.y;
+    this.hold.d = 0;
+    // ステージの下にもぐっていたら、まず外側へ抜ける(天井に頭をぶつけない)
+    if (!outside && below > -4) this.setMove(side);
+    else if (below > 20 && outX < 26) this.setMove(0);
+    else if (Math.random() < 0.9) this.setMove(-side);
+    if (f.state === 'helpless' || f.state === 'attack' || f.state === 'hitstun' || f.state === 'airdodge') return;
+    // 復帰のミスは「その場面ごと」に起きる(焦って遅れる)。成功時も判断は反応時間に縛られる
+    const ep = this.recEp;
+    if (ep.err && this.now - ep.start < ep.late) return;
+    if (f.jumps > 0 && f.vy > -2 && below > -40 - rnd(0, 60)) { this.tap('u', ri(6, 10), ri(0, 2)); return; }
+    if (outside && f.jumps === 0 && f.canUpB && f.vy > -1 && (below > -10 - rnd(0, 40) || outX > 170)) {
+      this.hold.u = 0; this.tap('u', ri(8, 12), 0); this.tap('s', ri(4, 7), ri(1, 3)); this.busy(10);
+    }
+  }
+  decide(f, o, v) {
+    const P = this.P, st = f.state;
+    if (st === 'respawn') { if (f.t > this.respawnWait) { this.tap(Math.random() < 0.5 ? 'd' : (f.x < 640 ? 'r' : 'l'), 5); } return; }
+    if (f.grounded || st === 'dead' || st === 'respawn') this.recEp = null;
+    if (st === 'dead' || st === 'grabbed') { this.releaseAll(); return; }
+    if (st === 'hitstun' || st === 'stunned') { this.setMove(f.x < 640 ? 1 : -1); return; } // ふっとびずらし(ステージ方向に入れる)
+    if (!this.onStage(f) && !f.grounded) { if (!this.recEp) this.recEp = { start: this.now, err: Math.random() > P.recov, late: ri(10, 28) }; this.recover(f); const [a] = P.interval; this.cool = Math.max(3, Math.floor(a / 3)); return; }
+    if (st === 'holding') { this.releaseAll(); if (Math.random() < 0.5) this.setMove(f.facing > 0 ? -1 : 1); return; } // 投げ方向
+    if (!['idle', 'run', 'air', 'shield', 'landing'].includes(st)) return;
+    const dx = v.x - f.x, adx = Math.abs(dx), d = dx >= 0 ? 1 : -1, dy = v.y - f.y;
+    const oppGone = v.state === 'dead' || v.state === 'respawn';
+    const jabR = reachOf(f, 'jab', v.w / 2), smashR = reachOf(f, 'fsmash', v.w / 2), grabR = reachOf(f, 'grab', v.w / 2), nairR = reachOf(f, 'nair', v.w / 2);
+    const mistake = Math.random() < P.mistake;
+    if (st === 'shield') { if (Math.random() < 0.6) this.hold.g = 0; }
+    // 相手がいない/場外 → 中央寄りで待つ・崖で待ち構える
+    if (oppGone) { this.hold.g = 0; this.setMove(Math.abs(f.x - 640) > 60 + rnd(0, 80) ? (f.x < 640 ? 1 : -1) : 0); return; }
+    const oppOff = v.x < STAGE.x1 - 10 || v.x > STAGE.x2 + 10 || v.y > STAGE.y + 20;
+    if (oppOff && f.grounded) {
+      const edge = v.x < 640 ? STAGE.x1 + 40 : STAGE.x2 - 40;
+      if (adx < smashR && Math.abs(dy) < 70 && Math.random() < P.aggro) { this.setMove(0); this.tap(d < 0 ? 'l' : 'r', 4, 0); this.tap(Math.random() < 0.5 ? 's' : 'a', 5, 1); this.busy(20); }
+      else this.setMove(Math.abs(f.x - edge) > 30 ? (edge > f.x ? 1 : -1) : 0);
+      return;
+    }
+    // 空中
+    if (!f.grounded) {
+      if (adx > 18) this.setMove(d); else this.setMove(0);
+      if (Math.abs(dy) < 70 && adx < nairR + 10 && Math.random() < P.aggro) {
+        if (dy < -35) { this.hold.u = 0; this.tap('u', 6, 0); this.tap('a', 5, 1); }
+        else if (f.facing === d && Math.random() < 0.35) this.tap('s', 5);
+        else this.tap('a', 5);
+        this.busy(14);
+      } else if (f.vy > 1 && Math.random() < 0.25 && f.y < STAGE.y - 60) this.tap('d', 4);
+      return;
+    }
+    // 足場の上で相手が下にいる → 降りる
+    if (f.onSoft && dy > 60 && Math.random() < 0.5) { this.tap('d', 5); return; }
+    // 相手が上にいる → 上攻撃 or ジャンプで追う
+    if (dy < -60 && adx < 70 && Math.random() < P.aggro) {
+      this.setMove(0); this.hold.u = 0;
+      if (dy > -170) { this.tap('u', 4, 0); this.tap(Math.random() < 0.4 ? 's' : 'a', 5, 1); }
+      else { this.tap('u', ri(8, 12), 0); this.tap('a', 5, ri(14, 22)); this.tap('u', 6, ri(18, 24)); }
+      this.busy(22); return;
+    }
+    // 間合い(人間らしいブレ込み)
+    const want = (mistake ? rnd(0.5, 1.6) : 1) * jabR * rnd(0.7, 1.0) + gauss() * P.err * 0.5;
+    if (adx > smashR + 20 + gauss() * P.err) {
+      // 接近:歩く/走る、ときどきジャンプで飛び込む
+      this.hold.g = 0; this.setMove(d);
+      if (adx < smashR + 160 && Math.random() < 0.12 * this.habit.air * (P.aggro / 0.6)) {
+        const hop = Math.random() < 0.5 ? 2 : ri(6, 9);
+        this.tap('u', hop, 0); this.tap('a', 5, ri(10, 18)); this.busy(ri(26, 36));
+      }
+      return;
+    }
+    // 間合い内:読み合い
+    const tot = this.seen.shield + this.seen.attack + this.seen.grab;
+    const rShield = this.seen.shield / tot, rAtk = this.seen.attack / tot, rGrab = this.seen.grab / tot;
+    const rd = P.read;
+    const w = {
+      jab: this.habit.jab * (adx < jabR + 4 ? 1.4 : 0.3) * (1 + rd * 2 * rGrab),
+      smash: this.habit.smash * (adx < smashR ? 1 : 0.2) * (0.7 + v.percent / 120) * (1 + rd * 1.5 * rGrab),
+      grab: this.habit.grab * (adx < grabR + 6 ? 1.2 : 0.15) * (1 + rd * 3 * rShield),
+      shield: this.habit.shield * (1 + rd * 2.5 * rAtk),
+      wait: this.habit.wait * (1.3 - P.aggro),
+      air: this.habit.air * 0.5,
+      space: (adx < want ? 0.9 : 0.2)
+    };
+    let pick;
+    if (mistake) { const ks = Object.keys(w); pick = ks[ri(0, ks.length - 1)]; }
+    else { let sum = 0; for (const k in w) sum += w[k]; let r = Math.random() * sum; for (const k in w) { r -= w[k]; if (r <= 0) { pick = k; break; } } pick = pick || 'wait'; }
+    const face = () => { if (f.facing !== d) this.tap(d < 0 ? 'l' : 'r', 3, 0); };
+    this.setMove(0); if (pick !== 'shield') this.hold.g = 0;
+    switch (pick) {
+      case 'jab': { face(); const n = Math.random() < 0.4 ? ri(2, 3) : 1; for (let i = 0; i < n; i++) this.tap('a', ri(4, 7), 2 + i * ri(11, 15)); this.busy(8 + n * 13); break; }
+      case 'smash': this.tap(d < 0 ? 'l' : 'r', ri(4, 6), 0); this.tap('s', ri(4, 7), 1); this.busy(ri(34, 44)); break;
+      case 'grab': face(); this.tap('g', ri(10, 14), 1); this.tap('a', ri(4, 6), ri(2, 4)); this.busy(ri(26, 32)); break;
+      case 'shield': this.tap('g', ri(16, 34), ri(0, 2)); this.busy(ri(14, 24)); break;
+      case 'air': { this.setMove(d); const hop = Math.random() < 0.6 ? 2 : ri(6, 9); this.tap('u', hop, 0); this.tap('a', 5, ri(8, 14)); this.busy(ri(26, 34)); break; }
+      case 'space': this.setMove(-d); break;
+      default: if (Math.random() < 0.4) this.setMove(Math.random() < 0.5 ? d : -d); break; // うろうろ
+    }
+  }
+}
+
 // ===================== シーン更新 =====================
 function tick() {
   frameCount++; game.t++;
@@ -567,20 +804,40 @@ function tickTitle() {
   if (mi.ok && game.t > 10) { sfx('ok'); if (game.titleSel === 0) { game.sel[0].ready = game.sel[1].ready = false; game.selTimer = -1; setScene('select'); } else setScene('howto'); }
 }
 function tickHowto() { const mi = menuInput(); if ((mi.ok || mi.back) && game.t > 10) { sfx('back'); setScene('title'); } }
+function ctrlLabel(lv) { return lv > 0 ? 'CPU Lv' + lv + ' ' + CPU_LV[lv].name : '人間'; }
+function selOperators(i) {
+  // 自分のキー + (相方が準備OKで、この枠がCPUなら)相方のキーでも操作できる → 1人でCPU戦の準備ができる
+  const ops = [readKeys(i)];
+  const j = 1 - i;
+  if (game.ctrl[i] > 0 && game.sel[j].ready && !game.sel[i].ready) ops.push(readKeys(j));
+  return ops;
+}
 function tickSelect() {
   if (framePressed.has('Escape')) { sfx('back'); setScene('title'); return; }
+  const fp = framePressed;
+  if (fp.has('KeyE') || fp.has('BracketRight')) { game.stocks = Math.min(5, game.stocks + 1); sfx('menu'); }
+  if (fp.has('KeyQ') || fp.has('BracketLeft')) { game.stocks = Math.max(1, game.stocks - 1); sfx('menu'); }
+  const used = [false, false];
+  game.sel.forEach(x => x.justReady = false);
   for (let i = 0; i < 2; i++) {
-    const inp = readInput(i), s = game.sel[i];
-    if (!s.ready) {
-      if (inp.pl) { s.ci = (s.ci + 3) % 4; sfx('menu'); }
-      if (inp.pr) { s.ci = (s.ci + 1) % 4; sfx('menu'); }
-      if (inp.pa && game.t > 8) { s.ready = true; sfx('ok'); }
-      if (inp.pg && game.t > 8) { sfx('back'); setScene('title'); return; }
-    } else {
-      if (inp.pg) { s.ready = false; game.selTimer = -1; sfx('back'); }
+    const s = game.sel[i];
+    const ops = selOperators(i);
+    for (let n = 0; n < ops.length; n++) {
+      const inp = ops[n], owner = n === 0 ? i : 1 - i;
+      if ((used[owner] || (owner === 1 - i && game.sel[owner].justReady)) && n > 0) continue;
+      if (!s.ready) {
+        if (inp.pl) { s.ci = (s.ci + 3) % 4; sfx('menu'); used[owner] = true; }
+        if (inp.pr) { s.ci = (s.ci + 1) % 4; sfx('menu'); used[owner] = true; }
+        if (inp.pd) { game.ctrl[i] = (game.ctrl[i] + 1) % 6; sfx('menu'); used[owner] = true; }
+        if (inp.pu) { game.ctrl[i] = (game.ctrl[i] + 5) % 6; sfx('menu'); used[owner] = true; }
+        if (inp.pa && game.t > 8) { s.ready = true; s.justReady = true; sfx('ok'); used[owner] = true; }
+        if (inp.pg && game.t > 8) {
+          used[owner] = true;
+          if (n > 0) { game.sel[owner].ready = false; sfx('back'); }
+          else { sfx('back'); setScene('title'); return; }
+        }
+      } else if (n === 0 && inp.pg) { s.ready = false; game.selTimer = -1; sfx('back'); }
     }
-    if (inp.pu) { game.stocks = Math.min(5, game.stocks + 1); sfx('menu'); }
-    if (inp.pd) { game.stocks = Math.max(1, game.stocks - 1); sfx('menu'); }
   }
   if (game.sel[0].ready && game.sel[1].ready) {
     if (game.selTimer < 0) game.selTimer = 50;
@@ -602,6 +859,9 @@ function tickMatch() {
     }
     return;
   }
+  game.matchT++;
+  for (let i = 0; i < 2; i++) { const h = game.hist[i]; h.push(snapshot(fs[i])); if (h.length > 90) h.shift(); }
+  if (game.countdown <= 0) for (let i = 0; i < 2; i++) if (game.ais[i]) game.ais[i].update(fs[i], fs[1 - i]);
   const inputs = [readInput(0), readInput(1)];
   if (game.shake > 0) { game.shake *= 0.86; if (game.shake < 0.3) game.shake = 0; }
   cam.sx = rnd(-1, 1) * game.shake; cam.sy = rnd(-1, 1) * game.shake;
@@ -620,8 +880,10 @@ function tickMatch() {
     updateCam(); return;
   }
   // 同時更新(入力順の有利不利をなくす)
-  updateFighter(fs[0], inputs[0], fs[1]);
-  updateFighter(fs[1], inputs[1], fs[0]);
+  // 処理順を毎フレーム入れ替えて、P1/P2の有利不利をなくす
+  const first = game.matchT & 1;
+  updateFighter(fs[first], inputs[first], fs[1 - first]);
+  updateFighter(fs[1 - first], inputs[1 - first], fs[first]);
   // ゆるい押し合い
   const a = fs[0], b = fs[1];
   if (a.grounded && b.grounded && Math.abs(a.y - b.y) < 10 && !['grabbed', 'holding', 'roll'].includes(a.state) && !['grabbed', 'holding', 'roll'].includes(b.state)) {
@@ -1025,7 +1287,7 @@ function drawFighter(f) {
   const ty = f.y - f.h - (f.c.id === 'neko' ? 28 : 20);
   ctx.fillStyle = P_COLORS[f.pi];
   ctx.beginPath(); ctx.moveTo(f.x - 7, ty); ctx.lineTo(f.x + 7, ty); ctx.lineTo(f.x, ty + 8); ctx.closePath(); ctx.fill();
-  text(f.pi === 0 ? 'P1' : 'P2', f.x, ty - 10, 15, P_COLORS[f.pi], 'center', '900', 4);
+  text((game.ctrl[f.pi] ? 'CP' : 'P') + (f.pi + 1), f.x, ty - 10, 15, P_COLORS[f.pi], 'center', '900', 4);
 }
 
 function drawBackground(parallax) {
@@ -1089,7 +1351,7 @@ function drawHUD() {
     // 顔アイコン
     ctx.save(); ctx.beginPath(); ctx.arc(cx - 100, y + 2, 34, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.clip();
     { const sc = 48 / f.c.h; ctx.translate(cx - 100, y + 4 + f.c.h * sc * 0.5); ctx.scale(sc, sc); } drawCharBody(f.c, f.color, 1, { t: frameCount }); ctx.restore();
-    text((i === 0 ? 'P1 ' : 'P2 ') + f.c.name, cx - 50, y - 26, 16, P_COLORS[i], 'left', '800');
+    text((i === 0 ? 'P1 ' : 'P2 ') + f.c.name + (game.ctrl[i] ? ' (CPU Lv' + game.ctrl[i] + ')' : ''), cx - 50, y - 26, game.ctrl[i] ? 14 : 16, P_COLORS[i], 'left', '800');
     const sh = f.pctShake > 0 ? rnd(-1, 1) * f.pctShake * 0.4 : 0;
     const pc = f.state === 'dead' ? '---' : Math.floor(f.percent) + '';
     ctx.font = '900 50px ' + FONT;
@@ -1187,8 +1449,8 @@ function renderHowto() {
   // ルール
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(660, 420, 560, 250, 18); ctx.fill();
   text('ルール', 940, 448, 22, '#ffd23d', 'center', '900');
-  const rules = ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', 'ガード中に←→で回避、↓でその場回避', '空中でガードを押すと空中回避', 'Esc / P でポーズ'];
-  rules.forEach((r, i) => text('・' + r, 690, 486 + i * 26, 17, '#eef1ff', 'left', '700'));
+  const rules = ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', 'ガード中に←→で回避、↓でその場回避', '空中でガードを押すと空中回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜5)と対戦', 'Esc / P でポーズ'];
+  rules.forEach((r, i) => text('・' + r, 690, 480 + i * 24, 16, '#eef1ff', 'left', '700'));
   text('決定キー または ガードキー でもどる', W / 2, 700, 15, '#c9d1ff', 'center', '600');
 }
 function statBar(x, y, label, v, color) {
@@ -1208,8 +1470,8 @@ function renderSelect() {
       if (p1 && p2) { ctx.strokeStyle = P_COLORS[0]; rr(x - 3, y - 3, cw + 6, 386, 20); ctx.stroke(); ctx.strokeStyle = P_COLORS[1]; rr(x + 4, y + 4, cw - 8, 372, 15); ctx.stroke(); }
       else { ctx.strokeStyle = P_COLORS[p1 ? 0 : 1]; rr(x - 3, y - 3, cw + 6, 386, 20); ctx.stroke(); }
     }
-    if (p1) { ctx.fillStyle = P_COLORS[0]; rr(x + 10, y + 10, 46, 26, 8); ctx.fill(); text('1P', x + 33, y + 23, 16, '#fff', 'center', '900'); }
-    if (p2) { ctx.fillStyle = P_COLORS[1]; rr(x + cw - 56, y + 10, 46, 26, 8); ctx.fill(); text('2P', x + cw - 33, y + 23, 16, '#fff', 'center', '900'); }
+    if (p1) { ctx.fillStyle = P_COLORS[0]; rr(x + 10, y + 10, 46, 26, 8); ctx.fill(); text(game.ctrl[0] ? 'CP1' : '1P', x + 33, y + 23, 16, '#fff', 'center', '900'); }
+    if (p2) { ctx.fillStyle = P_COLORS[1]; rr(x + cw - 56, y + 10, 46, 26, 8); ctx.fill(); text(game.ctrl[1] ? 'CP2' : '2P', x + cw - 33, y + 23, 16, '#fff', 'center', '900'); }
     const bounce = (p1 || p2) ? Math.abs(Math.sin(frameCount * 0.12)) * -6 : 0;
     ctx.save(); ctx.translate(x + cw / 2, y + 170 + bounce); ctx.scale(1.4, 1.4); drawCharBody(c, (p2 && !p1 && game.sel[0].ci === i) ? c.alt : c.color, 1, { t: frameCount }); ctx.restore();
     text(c.name, x + cw / 2, y + 205, 30, '#ffffff', 'center', '900');
@@ -1225,11 +1487,15 @@ function renderSelect() {
     text(i === 0 ? 'プレイヤー1' : 'プレイヤー2', x + 20, y + 26, 20, P_COLORS[i], 'left', '900');
     text(CHARS[s.ci].name, x + 20, y + 66, 34, '#ffffff', 'left', '900');
     if (s.ready) { ctx.fillStyle = '#ffd23d'; rr(x + 240, y + 46, 180, 44, 22); ctx.fill(); text('じゅんびOK!', x + 330, y + 68, 22, '#1b2033', 'center', '900'); }
-    text(i === 0 ? 'A/D:えらぶ  F:決定  H:もどる' : '←/→:えらぶ  ,:決定  /:もどる', x + 20, y + 108, 15, '#c9d1ff', 'left', '600');
+    const lv = game.ctrl[i];
+    ctx.fillStyle = lv > 0 ? '#ffd23d' : 'rgba(255,255,255,0.14)'; rr(x + 200, y + 10, 226, 32, 16); ctx.fill();
+    text('◀ ' + ctrlLabel(lv) + ' ▶', x + 313, y + 26, lv > 0 ? 16 : 18, lv > 0 ? '#1b2033' : '#ffffff', 'center', '900');
+    const helper = lv > 0 && !s.ready && game.sel[1 - i].ready;
+    text(helper ? (i === 0 ? 'P2のキーでも操作できます' : 'P1のキーでも操作できます') : (i === 0 ? 'A/D:キャラ  W/S:人間/CPU  F:決定  H:もどる' : '←/→:キャラ  ↑/↓:人間/CPU  ,:決定  /:もどる'), x + 20, y + 108, 15, helper ? '#ffd23d' : '#c9d1ff', 'left', '700');
   }
   text('ストック', W / 2, 530, 18, '#c9d1ff', 'center', '700');
   text('◀ ' + game.stocks + ' ▶', W / 2, 568, 38, '#ffffff', 'center', '900', 5);
-  text('↑↓ / W S で変更', W / 2, 604, 13, '#c9d1ff', 'center', '600');
+  text('Q / E で変更', W / 2, 604, 13, '#c9d1ff', 'center', '600');
   if (game.selTimer > 0) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 300, W, 120);
     text('バトル開始!', W / 2, 360, 64, '#ffd23d', 'center', '900', 10);
@@ -1275,7 +1541,7 @@ function renderResult() {
   const wf = game.fighters[game.winner], lf = game.fighters[1 - game.winner];
   ctx.fillStyle = P_COLORS[game.winner] + '33'; ctx.fillRect(0, 0, W, H);
   text('WINNER', W / 2, 70, 30, '#ffd23d', 'center', '900', 6);
-  text((game.winner === 0 ? 'プレイヤー1' : 'プレイヤー2') + '  ' + wf.c.name + ' の勝ち!', W / 2, 124, 52, '#ffffff', 'center', '900', 8);
+  text((game.ctrl[game.winner] ? 'CPU' : 'プレイヤー') + (game.winner + 1) + '  ' + wf.c.name + ' の勝ち!', W / 2, 124, 52, '#ffffff', 'center', '900', 8);
   ctx.save(); ctx.translate(380, 450 + Math.sin(frameCount * 0.08) * -10); ctx.scale(2.6, 2.6); drawCharBody(wf.c, wf.color, 1, { t: frameCount }); ctx.restore();
   ctx.save(); ctx.translate(380 + 170, 450); ctx.scale(1.1, 1.1); ctx.globalAlpha = 0.55; drawCharBody(lf.c, lf.color, -1, { t: 0, hurt: true }); ctx.restore();
   ctx.fillStyle = '#b8f2e6'; ctx.fillRect(200, 452, 440, 6);
@@ -1311,7 +1577,16 @@ function frame(now) {
 requestAnimationFrame(frame);
 cv.focus();
 // テスト・デバッグ用フック
-window.__NF = { game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch };
+function simMatch(c0, c1, lv0, lv1, maxT) {
+  game.sel[0].ci = c0; game.sel[1].ci = c1; game.ctrl = [lv0, lv1];
+  startMatch(); game.countdown = 0; framePressed = new Set();
+  let n = 0; maxT = maxT || 21600;
+  while (game.scene === 'match' && n < maxT) { tickMatch(); particles.length = 0; game.banner = null; n++; }
+  const fs = game.fighters;
+  let winner = game.scene === 'result' ? game.winner : (fs[0].stocks !== fs[1].stocks ? (fs[0].stocks > fs[1].stocks ? 0 : 1) : (fs[0].percent <= fs[1].percent ? 0 : 1));
+  return { winner, timeout: game.scene !== 'result', ticks: game.matchT, kos: game.kos.slice(), stocks: fs.map(f => f.stocks), dealt: fs.map(f => f.stats.dealt) };
+}
+window.__NF = { game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
 </script>
 </body>
 </html>

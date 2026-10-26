@@ -6,12 +6,20 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ニチジョウ">
+<meta name="application-name" content="ニチジョウ・ファイターズ">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <meta name="theme-color" content="#0b0e1c">
 <title>ニチジョウ・ファイターズ</title>
 <style>
 html,body{margin:0;height:100%;background:#0b0e1c;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:100%}
-#wrap{position:fixed;top:env(safe-area-inset-top,0px);right:env(safe-area-inset-right,0px);bottom:env(safe-area-inset-bottom,0px);left:env(safe-area-inset-left,0px);display:flex;align-items:center;justify-content:center;touch-action:none}
-canvas{display:block;outline:none;touch-action:none;-webkit-touch-callout:none}
+html,body{height:100dvh}
+#wrap{position:fixed;inset:0;overflow:hidden;touch-action:none;background:#141a3a}
+#safe{position:fixed;inset:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+canvas{position:absolute;left:0;top:0;display:block;outline:none;touch-action:none;-webkit-touch-callout:none}
 #rotate{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0b0e1c;color:#fff;font:800 26px "Hiragino Sans","Noto Sans CJK JP",sans-serif;text-align:center;touch-action:none}
 #rotate .ph{width:70px;height:120px;border:6px solid #b8f2e6;border-radius:14px;animation:rot 1.8s ease-in-out infinite}
 #rotate small{font-size:16px;color:#c9d1ff;font-weight:700}
@@ -20,6 +28,7 @@ canvas{display:block;outline:none;touch-action:none;-webkit-touch-callout:none}
 </head>
 <body>
 <div id="wrap"><canvas id="c" tabindex="0"></canvas></div>
+<div id="safe"></div>
 <div id="rotate"><div class="ph"></div><div>横向きにしてね</div><small>スマホを横にすると遊べます</small></div>
 <script>
 'use strict';
@@ -30,18 +39,39 @@ const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 let baseTf = 1;
 // タッチ端末の判定(スマホ・タブレット)。タイトル画面で手動切り替えも可能
 const IS_TOUCH = (() => { try { return matchMedia('(pointer: coarse)').matches || (('ontouchstart' in window) && !matchMedia('(pointer: fine)').matches); } catch (e) { return false; } })();
-const wrapEl = document.getElementById('wrap'), rotateEl = document.getElementById('rotate');
+const wrapEl = document.getElementById('wrap'), rotateEl = document.getElementById('rotate'), safeEl = document.getElementById('safe');
+// 画面全体(ノッチ・ホームバーの下まで)を背景で塗り、ゲーム本体(1280x720)は安全領域の中央に置く
+const VIEW = { ox: 0, oy: 0, s: 1, dpr: 1, cw: W, ch: H, key: '' };
+let VX0 = 0, VY0 = 0, VX1 = W, VY1 = H, SX0 = 0, SY0 = 0, SX1 = W, SY1 = H;
+let baseX = 0, baseY = 0;
 function resize() {
   // タッチ端末は描画負荷を抑えるため DPR を 2 までに制限
   const dpr = Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 2 : 4);
-  const aw = wrapEl.clientWidth || innerWidth, ah = wrapEl.clientHeight || innerHeight;
+  const cw = wrapEl.clientWidth || innerWidth, ch = wrapEl.clientHeight || innerHeight;
+  let sl = 0, st = 0, sr = 0, sb = 0;
+  try { const cs = getComputedStyle(safeEl); sl = parseFloat(cs.paddingLeft) || 0; st = parseFloat(cs.paddingTop) || 0; sr = parseFloat(cs.paddingRight) || 0; sb = parseFloat(cs.paddingBottom) || 0; } catch (e) {}
+  const aw = Math.max(1, cw - sl - sr), ah = Math.max(1, ch - st - sb);
   const s = Math.min(aw / W, ah / H);
-  cv.style.width = (W * s) + 'px'; cv.style.height = (H * s) + 'px';
-  cv.width = Math.round(W * s * dpr); cv.height = Math.round(H * s * dpr);
-  baseTf = cv.width / W;
+  const ox = sl + (aw - W * s) / 2, oy = st + (ah - H * s) / 2;
+  cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+  Object.assign(VIEW, { ox, oy, s, dpr, cw, ch, key: [cw, ch, dpr, sl, st, sr, sb].join(',') });
+  baseTf = s * dpr; baseX = ox * dpr; baseY = oy * dpr;
+  VX0 = -ox / s; VY0 = -oy / s; VX1 = (cw - ox) / s; VY1 = (ch - oy) / s;
+  SX0 = (sl - ox) / s; SY0 = (st - oy) / s; SX1 = (cw - sr - ox) / s; SY1 = (ch - sb - oy) / s;
   if (typeof checkOrientation === 'function') checkOrientation();
 }
-addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 120)); resize();
+function sizeKey() { try { return sizeKey2(); } catch (e) { return VIEW.key; } }
+function sizeKey2() {
+  const cs = getComputedStyle(safeEl);
+  return [wrapEl.clientWidth || innerWidth, wrapEl.clientHeight || innerHeight, Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 2 : 4), parseFloat(cs.paddingLeft) || 0, parseFloat(cs.paddingTop) || 0, parseFloat(cs.paddingRight) || 0, parseFloat(cs.paddingBottom) || 0].join(',');
+}
+function resizeSoon() { resize(); setTimeout(resize, 120); setTimeout(resize, 500); }
+addEventListener('resize', resize); addEventListener('orientationchange', resizeSoon); addEventListener('pageshow', resizeSoon);
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+['fullscreenchange', 'webkitfullscreenchange'].forEach(t => document.addEventListener(t, resizeSoon));
+resize();
+function fullFill(style) { ctx.fillStyle = style; ctx.fillRect(VX0 - 2, VY0 - 2, VX1 - VX0 + 4, VY1 - VY0 + 4); }
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -82,7 +112,7 @@ const uiDown = new Map();
 function uiBtn(x, y, w, h, fn, direct) { uiBtns.push({ x, y, w, h, fn, direct }); }
 function toLogical(e) {
   const r = cv.getBoundingClientRect();
-  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+  return { x: (e.clientX - r.left - VIEW.ox) / VIEW.s, y: (e.clientY - r.top - VIEW.oy) / VIEW.s };
 }
 function uiHit(p) {
   for (let i = uiBtns.length - 1; i >= 0; i--) { const b = uiBtns[i]; if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return b; }
@@ -183,7 +213,30 @@ function computeTouch() {
   touch.pressed.clear();
   touchOut = out;
 }
-const CAN_FS = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const CAN_FS = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+const UA = navigator.userAgent || '';
+const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IOS_BROWSER = /CriOS/.test(UA) ? 'chrome' : /FxiOS/.test(UA) ? 'firefox' : /EdgiOS/.test(UA) ? 'edge' : 'safari';
+// ホーム画面から起動した「アプリ」状態か(iOS は standalone、Android は fullscreen/standalone)
+function isStandalone() {
+  try { return navigator.standalone === true || ['fullscreen', 'standalone', 'minimal-ui'].some(m => matchMedia('(display-mode: ' + m + ')').matches); } catch (e) { return false; }
+}
+let installPrompt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
+addEventListener('appinstalled', () => { installPrompt = null; });
+function doInstall() {
+  if (!installPrompt) return;
+  const p = installPrompt; installPrompt = null;
+  try { p.prompt(); Promise.resolve(p.userChoice).catch(() => {}); } catch (e) {}
+}
+// 全画面ボタンの動作: アプリ起動中→不要 / 全画面API対応→全画面+横向き固定 / iPhone Safari など→ホーム画面追加ガイド
+function fsMode() { return isStandalone() ? 'app' : CAN_FS ? 'api' : 'guide'; }
+function fsButtonLabel() { return isFullscreen() ? '全画面をやめる' : '⛶ 全画面'; }
+function fullscreenAction() {
+  const m = fsMode();
+  if (m === 'api') toggleFullscreen();
+  else if (m === 'guide') { game.guide = true; sfx('ok'); }
+}
 function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
 function toggleFullscreen() {
   try {
@@ -307,7 +360,7 @@ const BLAST = { x1: -300, x2: 1580, y1: -420, y2: 1020 };
 
 // ===================== ゲーム状態 =====================
 const game = {
-  mobile: IS_TOUCH, editSlot: 0,
+  mobile: IS_TOUCH, editSlot: 0, guide: false, guideNo: false,
   scene: 'title', t: 0, fade: 1, titleSel: 0, stocks: 3,
   sel: [{ ci: 0, ready: false }, { ci: 3, ready: false }], selTimer: -1, ctrl: [0, 0], ais: [null, null], hist: [[], []], matchT: 0, kos: [],
   fighters: [], hitstop: 0, shake: 0, countdown: 0, goTimer: 0, endTimer: -1, winner: -1,
@@ -938,7 +991,9 @@ function tick() {
   framePressed = new Set(pressedQ); pressedQ.clear();
   if (uiQueue.length) { const q = uiQueue; uiQueue = []; q.forEach(fn => fn()); }
   computeTouch();
-  if (frameCount % 30 === 0) checkOrientation();
+  if (frameCount % 30 === 0) { checkOrientation(); if (sizeKey() !== VIEW.key) resize(); }
+  if (game.guide) { if (framePressed.has('Escape') || framePressed.has('Enter')) closeGuide(); updateParticles(); return; }
+  if (game.scene === 'title' && frameCount === 90 && game.mobile && fsMode() === 'guide' && IS_IOS && !guideOptOut()) game.guide = true;
   if (framePressed.has('KeyM')) muted = !muted;
   if (game.fade > 0) game.fade = Math.max(0, game.fade - 0.08);
   if (game.banner && --game.banner.life <= 0) game.banner = null;
@@ -1446,11 +1501,11 @@ function drawFighter(f) {
 function drawBackground(parallax) {
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#141a3a'); g.addColorStop(0.6, '#2b2560'); g.addColorStop(1, '#3d2a5c');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  fullFill(g);
   const px = parallax ? (cam.x - 640) * 0.05 : 0, py = parallax ? (cam.y - 380) * 0.05 : 0;
-  // 星
-  for (let i = 0; i < 60; i++) {
-    const x = (i * 137.5 % W), y = (i * 71.3 % (H * 0.6));
+  // 星(画面の外側の余白にも並べる)
+  for (let k = Math.floor(VX0 / W); k <= Math.floor(VX1 / W); k++) for (let i = 0; i < 60; i++) {
+    const x = (i * 137.5 % W) + k * W, y = (i * 71.3 % (H * 0.6));
     ctx.fillStyle = 'rgba(255,255,255,' + (0.25 + 0.35 * Math.abs(Math.sin(frameCount * 0.02 + i))) + ')';
     ctx.fillRect(x - px * 0.5, y - py * 0.5, 2, 2);
   }
@@ -1459,9 +1514,11 @@ function drawBackground(parallax) {
   ctx.fillStyle = 'rgba(255,240,200,0.12)'; ctx.beginPath(); ctx.arc(1030 - px, 130 - py, 80, 0, Math.PI * 2); ctx.fill();
   // 遠景の山
   ctx.fillStyle = '#231f4d';
-  ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 80) ctx.lineTo(x - px * 2, 470 - py * 2 + Math.sin(x * 0.011) * 50 + Math.sin(x * 0.033) * 20); ctx.lineTo(W, H); ctx.fill();
+  const mx0 = Math.floor((VX0 - 200) / 80) * 80, mx1 = VX1 + 200, bot = Math.max(H, VY1) + 4;
+  ctx.beginPath(); ctx.moveTo(mx0, bot); for (let x = mx0; x <= mx1; x += 80) ctx.lineTo(x - px * 2, 470 - py * 2 + Math.sin(x * 0.011) * 50 + Math.sin(x * 0.033) * 20); ctx.lineTo(mx1, bot); ctx.fill();
   ctx.fillStyle = '#1a1740';
-  ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 60) ctx.lineTo(x - px * 4, 560 - py * 4 + Math.sin(x * 0.017 + 1) * 40); ctx.lineTo(W, H); ctx.fill();
+  const nx0 = Math.floor((VX0 - 200) / 60) * 60;
+  ctx.beginPath(); ctx.moveTo(nx0, bot); for (let x = nx0; x <= mx1; x += 60) ctx.lineTo(x - px * 4, 560 - py * 4 + Math.sin(x * 0.017 + 1) * 40); ctx.lineTo(mx1, bot); ctx.fill();
 }
 function drawStage() {
   // 本体
@@ -1520,8 +1577,8 @@ function drawOffscreen() {
   for (const f of game.fighters) {
     if (f.state === 'dead') continue;
     const sx = (f.x - cam.x) * cam.z + W / 2, sy = (f.y - f.h / 2 - cam.y) * cam.z + H / 2;
-    if (sx > 0 && sx < W && sy > 0 && sy < H) continue;
-    const ex = clamp(sx, 40, W - 40), ey = clamp(sy, 40, H - 40);
+    if (sx > VX0 && sx < VX1 && sy > VY0 && sy < VY1) continue;
+    const ex = clamp(sx, Math.max(SX0, VX0) + 40, Math.min(SX1, VX1) - 40), ey = clamp(sy, Math.max(SY0, VY0) + 40, Math.min(SY1, VY1) - 40);
     ctx.fillStyle = 'rgba(10,12,28,0.8)'; ctx.strokeStyle = P_COLORS[f.pi]; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(ex, ey, 28, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.save(); ctx.beginPath(); ctx.arc(ex, ey, 26, 0, Math.PI * 2); ctx.clip(); { const sc = 36 / f.h; ctx.translate(ex, ey + f.h * sc * 0.5); ctx.scale(sc, sc); } drawCharBody(f.c, f.color, f.facing, { t: frameCount }); ctx.restore();
@@ -1533,7 +1590,7 @@ function drawOffscreen() {
 
 // ===================== シーン描画 =====================
 function render() {
-  ctx.setTransform(baseTf, 0, 0, baseTf, 0, 0);
+  ctx.setTransform(baseTf, 0, 0, baseTf, baseX, baseY);
   uiBtns = [];
   switch (game.scene) {
     case 'title': renderTitle(); break;
@@ -1542,8 +1599,98 @@ function render() {
     case 'match': renderMatch(); break;
     case 'result': renderResult(); break;
   }
-  if (game.fade > 0) { ctx.fillStyle = 'rgba(11,14,28,' + game.fade + ')'; ctx.fillRect(0, 0, W, H); }
+  if (game.fade > 0) fullFill('rgba(11,14,28,' + game.fade + ')');
   if (muted) text('🔇 ミュート中 (M)', W - 16, 20, 14, '#ffffffaa', 'right', '600');
+  if (game.guide) renderGuide();
+}
+// ===== iPhone など: 「ホーム画面に追加」ガイド =====
+function guideOptOut() { try { return localStorage.getItem('nf_noguide') === '1'; } catch (e) { return false; } }
+function closeGuide() {
+  if (game.guideNo) { try { localStorage.setItem('nf_noguide', '1'); } catch (e) {} }
+  game.guide = false; sfx('back');
+}
+const ICON_IMG = new Image(); ICON_IMG.src = 'icons/apple-touch-icon.png';
+function shareIcon(x, y, sc, col) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.strokeStyle = col; ctx.lineWidth = 3.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(-7, -6); ctx.lineTo(-13, -6); ctx.lineTo(-13, 18); ctx.lineTo(13, 18); ctx.lineTo(13, -6); ctx.lineTo(7, -6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, -18); ctx.moveTo(-7, -11); ctx.lineTo(0, -18); ctx.lineTo(7, -11); ctx.stroke();
+  ctx.restore();
+}
+function plusSquare(x, y, sc, col) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  rr(-13, -13, 26, 26, 6); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 7); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.stroke(); ctx.restore();
+}
+function renderGuide() {
+  uiBtns = [];
+  fullFill('rgba(4,5,14,0.86)');
+  uiBtn(VX0, VY0, VX1 - VX0, VY1 - VY0, () => {});   // 背面のボタンを押せないように
+  const px = 70, py = 26, pw = 1140, ph = 668;
+  ctx.fillStyle = '#f7f8fc'; rr(px, py, pw, ph, 28); ctx.fill();
+  const ios = IS_IOS;
+  text('ホーム画面に追加すると', W / 2, py + 50, 30, '#1b2033', 'center', '900');
+  text('URLバーなしの全画面で遊べます!', W / 2, py + 92, 38, '#e8364a', 'center', '900');
+  text(ios ? (IOS_BROWSER === 'chrome' ? 'iPhone の Chrome では「全画面」ボタンが使えないため、ゲームをアプリのようにホーム画面に置いて起動します' : 'iPhone では「全画面」ボタンが使えないため、ゲームをアプリのようにホーム画面に置いて起動します') : 'このブラウザでは全画面にできないため、ホーム画面に追加して起動します', W / 2, py + 132, 17, '#4a5170', 'center', '700');
+  const steps = ios ? [
+    IOS_BROWSER === 'safari' ? { n: 1, t: '共有ボタンをタップ', d: ['画面下(または上)の', '□↑ マーク', '※見当たらない時は「…」→「共有」'], icon: 'share' }
+      : IOS_BROWSER === 'chrome' ? { n: 1, t: '共有ボタンをタップ', d: ['アドレスバーの右端にある', '□↑ マーク', '(Chrome の共有ボタン)'], icon: 'chromebar' }
+      : { n: 1, t: '共有ボタンをタップ', d: ['アドレスバーかメニューの', '□↑ マーク', '(共有)'], icon: 'share' },
+    { n: 2, t: '「ホーム画面に追加」', d: ['メニューを下にスクロール', 'して「ホーム画面に追加」', 'を選ぶ'], icon: 'add' },
+    { n: 3, t: '右上の「追加」', d: ['名前はそのままでOK', '右上の「追加」をタップ', ''], icon: 'ok' },
+    { n: 4, t: 'アイコンから起動', d: ['ホーム画面にできた', 'アイコンをタップすると', '全画面で遊べます!'], icon: 'app' }
+  ] : [
+    { n: 1, t: 'メニューを開く', d: ['ブラウザの', '⋮ メニューをタップ', ''], icon: 'menu' },
+    { n: 2, t: '「ホーム画面に追加」', d: ['「ホーム画面に追加」', 'または「アプリを', 'インストール」を選ぶ'], icon: 'add' },
+    { n: 3, t: '「追加」をタップ', d: ['確認画面で', '「追加」をタップ', ''], icon: 'ok' },
+    { n: 4, t: 'アイコンから起動', d: ['ホーム画面の', 'アイコンをタップすると', '全画面で遊べます!'], icon: 'app' }
+  ];
+  const cw = 250, gap = 18, x0 = W / 2 - (cw * 4 + gap * 3) / 2, cy = py + 160;
+  steps.forEach((st, i) => {
+    const x = x0 + i * (cw + gap);
+    ctx.fillStyle = '#ffffff'; rr(x, cy, cw, 330, 20); ctx.fill(); ctx.strokeStyle = '#d6dbef'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#e8364a'; ctx.beginPath(); ctx.arc(x + 34, cy + 34, 22, 0, Math.PI * 2); ctx.fill();
+    text(st.n + '', x + 34, cy + 35, 26, '#fff', 'center', '900');
+    if (i < 3) { ctx.fillStyle = '#e8364a'; ctx.beginPath(); ctx.moveTo(x + cw + 4, cy + 150); ctx.lineTo(x + cw + gap - 2, cy + 165); ctx.lineTo(x + cw + 4, cy + 180); ctx.fill(); }
+    // 絵
+    const ix = x + cw / 2, iy = cy + 120;
+    ctx.fillStyle = '#eef1fb'; rr(x + 30, cy + 66, cw - 60, 110, 16); ctx.fill();
+    if (st.icon === 'chromebar') {
+      ctx.fillStyle = '#ffffff'; rr(x + 38, iy - 22, cw - 76, 44, 22); ctx.fill(); ctx.strokeStyle = '#c9cfe6'; ctx.lineWidth = 2; ctx.stroke();
+      text('github.io', x + 56, iy, 13, '#6a7090', 'left', '700');
+      ctx.strokeStyle = '#e8364a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cw - 62, iy, 21, 0, Math.PI * 2); ctx.stroke();
+      shareIcon(x + cw - 62, iy + 1, 0.72, '#1b2033');
+      text('↑ ここ', x + cw - 62, iy + 38, 14, '#e8364a', 'center', '900');
+    } else if (st.icon === 'share') { ctx.fillStyle = '#ffffff'; rr(ix - 34, iy - 34, 68, 68, 16); ctx.fill(); ctx.strokeStyle = '#c9cfe6'; ctx.lineWidth = 2; ctx.stroke(); shareIcon(ix, iy + 2, 1.3, '#0a7aff'); }
+    else if (st.icon === 'menu') { ctx.fillStyle = '#1b2033'; [-16, 0, 16].forEach(d => { ctx.beginPath(); ctx.arc(ix, iy + d, 5, 0, Math.PI * 2); ctx.fill(); }); }
+    else if (st.icon === 'add') {
+      ctx.fillStyle = '#ffffff'; rr(x + 40, iy - 24, cw - 80, 48, 10); ctx.fill(); ctx.strokeStyle = '#c9cfe6'; ctx.lineWidth = 2; ctx.stroke();
+      text('ホーム画面に追加', x + 50, iy, 14, '#1b2033', 'left', '800'); plusSquare(x + cw - 58, iy, 0.75, '#1b2033');
+    } else if (st.icon === 'ok') {
+      ctx.fillStyle = '#ffffff'; rr(x + 40, iy - 30, cw - 80, 60, 10); ctx.fill(); ctx.strokeStyle = '#c9cfe6'; ctx.lineWidth = 2; ctx.stroke();
+      text('キャンセル', x + 58, iy, 14, '#0a7aff', 'left', '700'); text('追加', x + cw - 58, iy, 20, '#0a7aff', 'right', '900');
+      ctx.strokeStyle = '#e8364a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cw - 78, iy, 26, 0, Math.PI * 2); ctx.stroke();
+    } else if (st.icon === 'app') {
+      ctx.save(); rr(ix - 40, iy - 44, 80, 80, 18); ctx.clip();
+      if (ICON_IMG.complete && ICON_IMG.naturalWidth) ctx.drawImage(ICON_IMG, ix - 40, iy - 44, 80, 80);
+      else { ctx.fillStyle = '#2b2560'; ctx.fillRect(ix - 40, iy - 44, 80, 80); ctx.translate(ix, iy + 26); ctx.scale(0.75, 0.75); drawCharBody(CHARS[0], CHARS[0].color, 1, { t: 0 }); }
+      ctx.restore(); text('ニチジョウ', ix, iy + 50, 13, '#1b2033', 'center', '800');
+    }
+    text(st.t, x + cw / 2, cy + 210, 20, '#1b2033', 'center', '900');
+    st.d.forEach((l, k) => { if (l) text(l, x + cw / 2, cy + 246 + k * 26, k === 1 && st.icon === 'share' ? 19 : 15, k === 1 && st.icon === 'share' ? '#0a7aff' : '#4a5170', 'center', k === 1 ? '900' : '700'); });
+  });
+  if (ios && IOS_BROWSER === 'safari') text('Chrome など他のブラウザでは、共有ボタン(□↑)はアドレスバーの右側にあります', W / 2, py + 512, 15, '#4a5170', 'center', '700');
+  if (ios && IOS_BROWSER === 'chrome') text('「ホーム画面に追加」が見つからない時は、共有メニューを下にスクロールするか「編集」から追加できます', W / 2, py + 512, 15, '#4a5170', 'center', '700');
+  // ボタン
+  const ny = py + 548;
+  ctx.strokeStyle = '#8a91b0'; ctx.lineWidth = 2.5; rr(px + 70, ny + 18, 32, 32, 7); ctx.stroke();
+  if (game.guideNo) { ctx.strokeStyle = '#e8364a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(px + 77, ny + 34); ctx.lineTo(px + 85, ny + 43); ctx.lineTo(px + 97, ny + 24); ctx.stroke(); }
+  text('次回から自動で表示しない', px + 114, ny + 34, 18, '#4a5170', 'left', '700');
+  uiBtn(px + 60, ny + 6, 330, 56, () => { game.guideNo = !game.guideNo; sfx('menu'); });
+  ctx.fillStyle = '#1b2033'; rr(W / 2 - 130, ny + 6, 260, 58, 29); ctx.fill();
+  text('とじる', W / 2, ny + 35, 24, '#ffffff', 'center', '900');
+  uiBtn(W / 2 - 130, ny + 6, 260, 58, closeGuide);
+  ctx.fillStyle = '#e4e7f3'; ctx.beginPath(); ctx.arc(px + pw - 40, py + 40, 24, 0, Math.PI * 2); ctx.fill();
+  text('✕', px + pw - 40, py + 41, 24, '#1b2033', 'center', '900');
+  uiBtn(px + pw - 72, py + 8, 64, 64, closeGuide);
 }
 function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
 function pillBtn(x, y, w, h, label, on, size, fn, direct) {
@@ -1610,7 +1757,10 @@ function renderTitle() {
     uiBtn(W / 2 - 200, y - 26, 400, 52, () => { if (game.t > 10) titleAction(i); });
   });
   pillBtn(24, 636, 270, 50, game.mobile ? '📱 スマホ操作:ON' : '⌨ スマホ操作:OFF', game.mobile, 19, () => { sfx('menu'); setMobile(!game.mobile); });
-  if (CAN_FS) pillBtn(W - 224, 636, 200, 50, isFullscreen() ? '全画面をやめる' : '⛶ 全画面', false, 19, toggleFullscreen, true);
+  const fm = fsMode();
+  if (fm === 'api' || (fm === 'guide' && game.mobile)) pillBtn(W - 224, 636, 200, 50, fsButtonLabel(), false, 19, fullscreenAction, true);
+  else if (fm === 'app' && game.mobile) { ctx.fillStyle = 'rgba(10,12,28,0.5)'; rr(W - 224, 636, 200, 50, 25); ctx.fill(); text('✓ アプリで全画面中', W - 124, 661, 16, '#b8f2e6', 'center', '800'); }
+  if (installPrompt && fm !== 'app') pillBtn(W - 224, 578, 200, 50, '📲 アプリとして追加', false, 17, doInstall, true);
   text(game.mobile ? 'タップでえらんでね(横向きがおすすめ)' : 'W/S・↑/↓ でえらぶ　　F・,(カンマ)・Enter で決定　　M で音のON/OFF', W / 2, 690, 17, '#c9d1ff', 'center', '600');
 }
 function drawControls(pi, x, y) {
@@ -1628,7 +1778,7 @@ function drawControls(pi, x, y) {
 }
 function renderHowto() {
   drawBackground(false);
-  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, 0, W, H);
+  fullFill('rgba(0,0,0,0.25)');
   text('操作説明・あそびかた', W / 2, 44, 36, '#ffffff', 'center', '900', 6);
   if (game.mobile) drawTouchHelp(); else { drawControls(0, 340, 110); drawControls(1, 940, 110); }
   text('キャラクター:ネコ(動物 / バランス)・ニンジン(野菜 / スピード)・マグカップ(日用品 / パワー)・ハブラシ(日用品 / リーチ)', W / 2, 396, 17, '#ffd23d', 'center', '700', 4);
@@ -1727,7 +1877,7 @@ function renderSelect() {
   text('◀ ' + game.stocks + ' ▶', W / 2, 568, 38, '#ffffff', 'center', '900', 5);
   text('Q / E で変更', W / 2, 604, 13, '#c9d1ff', 'center', '600');
   if (game.selTimer > 0) {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 300, W, 120);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(VX0, 300, VX1 - VX0, 120);
     text('バトル開始!', W / 2, 360, 64, '#ffd23d', 'center', '900', 10);
   }
   text('Esc でタイトルへ', W / 2, 700, 14, '#c9d1ff', 'center', '600');
@@ -1769,7 +1919,7 @@ function renderSelectMobile() {
   });
   pillBtn(16, 14, 140, 46, '◀ もどる', false, 19, () => { sfx('back'); game.sel[0].ready = game.sel[1].ready = false; setScene('title'); });
   if (game.selTimer > 0) {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 300, W, 120);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(VX0, 300, VX1 - VX0, 120);
     text('バトル開始!', W / 2, 360, 64, '#ffd23d', 'center', '900', 10);
   }
 }
@@ -1806,7 +1956,7 @@ function renderMatch() {
     if (game.endTimer < 0) uiBtn(8, 6, 74, 74, () => { if (game.scene === 'match' && game.endTimer < 0 && !game.paused) { game.paused = true; game.pauseSel = 0; resetTouch(); sfx('menu'); } });
   }
   if (game.paused) {
-    ctx.fillStyle = 'rgba(5,6,16,0.7)'; ctx.fillRect(0, 0, W, H);
+    fullFill('rgba(5,6,16,0.7)');
     text('ポーズ', W / 2, 220, 60, '#ffffff', 'center', '900', 8);
     ['再開する', 'キャラ選択へ', 'タイトルへ'].forEach((s, i) => {
       const y = 320 + i * 64, on = game.pauseSel === i;
@@ -1814,13 +1964,13 @@ function renderMatch() {
       text(s, W / 2, y, 24, on ? '#1b2033' : '#dfe4ff', 'center', '800');
       uiBtn(W / 2 - 170, y - 25, 340, 50, () => { if (game.paused) { game.pauseSel = i; pauseAction(i); } });
     });
-    if (game.mobile && CAN_FS) pillBtn(W / 2 - 110, 540, 220, 46, isFullscreen() ? '全画面をやめる' : '⛶ 全画面', false, 18, toggleFullscreen, true);
+    if (game.mobile && fsMode() !== 'app') pillBtn(W / 2 - 110, 540, 220, 46, fsButtonLabel(), false, 18, fullscreenAction, true);
   }
 }
 function renderResult() {
   drawBackground(false);
   const wf = game.fighters[game.winner], lf = game.fighters[1 - game.winner];
-  ctx.fillStyle = P_COLORS[game.winner] + '33'; ctx.fillRect(0, 0, W, H);
+  fullFill(P_COLORS[game.winner] + '33');
   text('WINNER', W / 2, 70, 30, '#ffd23d', 'center', '900', 6);
   text((game.ctrl[game.winner] ? 'CPU' : 'プレイヤー') + (game.winner + 1) + '  ' + wf.c.name + ' の勝ち!', W / 2, 124, 52, '#ffffff', 'center', '900', 8);
   ctx.save(); ctx.translate(380, 450 + Math.sin(frameCount * 0.08) * -10); ctx.scale(2.6, 2.6); drawCharBody(wf.c, wf.color, 1, { t: frameCount }); ctx.restore();
@@ -1868,7 +2018,17 @@ function simMatch(c0, c1, lv0, lv1, maxT) {
   let winner = game.scene === 'result' ? game.winner : (fs[0].stocks !== fs[1].stocks ? (fs[0].stocks > fs[1].stocks ? 0 : 1) : (fs[0].percent <= fs[1].percent ? 0 : 1));
   return { winner, timeout: game.scene !== 'result', ticks: game.matchT, kos: game.kos.slice(), stocks: fs.map(f => f.stocks), dealt: fs.map(f => f.stats.dealt) };
 }
-window.__NF = { game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
+// オフライン用 Service Worker(http/https で配信されている時だけ。ファイル直開きでは何もしない)
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // 新しい版が届いたら、次にアプリを開いた時に切り替わるよう準備(遊んでいる最中は切り替えない)
+      const arm = () => { if (reg.waiting) document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && reg.waiting) reg.waiting.postMessage('skipWaiting'); }); };
+      arm(); reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') arm(); }); });
+    }).catch(() => {});
+  });
+}
+window.__NF = { VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
 </script>
 </body>
 </html>

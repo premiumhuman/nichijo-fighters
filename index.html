@@ -328,13 +328,13 @@ const CHARS = [
     weight: 100, jumps: 2, power: 1.0, reach: 1.0, lag: 0, bars: [3, 3, 3, 3, 3] },
   { id: 'ninjin', name: 'ニンジン', type: 'スピード', desc: '野菜。速くて軽い。葉っぱで手数勝負', color: '#ff7a1a', alt: '#ffd23d',
     w: 40, h: 62, run: 8.2, gAcc: 1.6, air: 5.7, aAcc: 0.8, jump: 14.4, dj: 14.6, grav: 0.74, fall: 10.5, ff: 16,
-    weight: 88, jumps: 2, power: 0.94, reach: 0.94, lag: -2, endlag: 0.95, upB: 1.4, bars: [5, 2, 2, 4, 2] },
+    weight: 88, jumps: 2, power: 0.94, reach: 0.94, lag: -2, endlag: 1.14, upB: 1.4, bars: [5, 2, 2, 4, 2] },
   { id: 'mug', name: 'マグカップ', type: 'パワー', desc: '日用品。重くて熱々コーヒーが強烈', color: '#4a90e2', alt: '#e84a5f',
     w: 56, h: 66, run: 5.1, gAcc: 0.9, air: 4.0, aAcc: 0.45, jump: 13.4, dj: 11.8, grav: 0.72, fall: 11.5, ff: 16,
     weight: 128, jumps: 2, power: 1.18, reach: 1.06, lag: 2, bars: [2, 5, 5, 2, 3] },
   { id: 'brush', name: 'ハブラシ', type: 'リーチ・空中', desc: '日用品。長いリーチとふわっと3段ジャンプ', color: '#2ec4b6', alt: '#ff7eb6',
-    w: 38, h: 78, run: 5.8, gAcc: 1.05, air: 5.0, aAcc: 0.55, jump: 12.4, dj: 10.5, grav: 0.47, fall: 7.8, ff: 12,
-    weight: 80, jumps: 3, power: 0.93, reach: 1.19, lag: 0, endlag: 0.9, upB: 0.9, meterGain: 1.5, bars: [3, 3, 1, 4, 5] }
+    w: 38, h: 78, run: 5.8, gAcc: 1.05, air: 5.0, aAcc: 0.55, jump: 12.4, dj: 10.5, grav: 0.47, fall: 7.8, ff: 14.5,
+    weight: 80, jumps: 3, power: 0.93, reach: 1.19, lag: 0, endlag: 0.83, upB: 0.9, meterGain: 1.5, bars: [3, 3, 1, 4, 5] }
 ];
 const P_COLORS = ['#ff4d5e', '#4da3ff'];
 
@@ -840,13 +840,23 @@ function showBanner(text, color, life) { game.banner = { text, color, life: life
 // AIは「仮想キーボード」だけを操作する。押す/離す → 人間と同じ readInput → 同じバッファ・物理。
 // 知覚は反応時間ぶん遅れた相手のスナップショットのみ。フレーム単位の最適行動はしない。
 const CPU_LV = [null,
-  // react:[平均, ばらつき](フレーム) 60f=1秒 / interval:判断間隔 / err:間合いのブレ(px)
-  { name: 'はじめて',   react: [23, 5], interval: [16, 26], err: 46, mistake: 0.30, guard: 0.22, punish: 0.22, read: 0.15, recov: 0.62, aggro: 0.45, superUse: 0.3 },
+  // react:[平均, ばらつき](フレーム) 60f=1秒 / minReact:最速の反応 / interval:判断間隔 / err:間合いのブレ(px)
+  // Lv4〜は「うまさ」が増える(反則なし: 見えるのは反応時間ぶん前の姿、操作は仮想キーのみ)
+  //   whiff:空振り・着地スキへの反撃 / oos:ガード後の反撃 / footsie:相手の届かない距離で待つ / shieldGrab:ガードを読んでつかむ
+  //   combo:ふっとばした相手への追撃 / escape:お手玉(空中で追撃される状況)から逃げる / edgeguard:崖外への追撃 / smartSuper:必殺技を当たる場面だけで使う / antiAir:対空 / adapt:クセ読みの強さ
   { name: 'かんたん',   react: [20, 4], interval: [13, 22], err: 36, mistake: 0.21, guard: 0.38, punish: 0.38, read: 0.32, recov: 0.78, aggro: 0.52, superUse: 0.42 },
-  { name: 'ふつう',     react: [17, 3], interval: [11, 18], err: 26, mistake: 0.14, guard: 0.52, punish: 0.52, read: 0.5,  recov: 0.88, aggro: 0.58, superUse: 0.55 },
-  { name: 'つよい',     react: [14, 3], interval: [9, 14],  err: 18, mistake: 0.09, guard: 0.66, punish: 0.66, read: 0.65, recov: 0.95, aggro: 0.62, superUse: 0.68 },
-  { name: 'めっちゃつよい', react: [12, 2], interval: [7, 11], err: 12, mistake: 0.05, guard: 0.76, punish: 0.76, read: 0.78, recov: 0.98, aggro: 0.66, superUse: 0.8 }
+  { name: 'ふつう',     react: [15, 3], interval: [10, 16], err: 22, mistake: 0.12, guard: 0.6,  punish: 0.6,  read: 0.58, recov: 0.92, aggro: 0.6,  superUse: 0.6 },
+  { name: 'つよい',     react: [12, 2], interval: [7, 11],  err: 12, mistake: 0.05, guard: 0.76, punish: 0.76, read: 0.78, recov: 0.98, aggro: 0.66, superUse: 0.8 },
+  { name: 'めっちゃつよい', react: [10, 2], minReact: 7, interval: [6, 9], err: 9, mistake: 0.03, guard: 0.84, punish: 0.84, read: 0.84, recov: 0.99, aggro: 0.68, superUse: 0.85,
+    whiff: 0.45, oos: 0.45, footsie: 0.3, shieldGrab: 0.45, combo: 0.4, escape: 0.35, edgeguard: 0.3, smartSuper: 0.5, antiAir: 0.35, adapt: 0.4 },
+  { name: 'たつじん',   react: [9, 1.5], minReact: 7, interval: [5, 8], err: 7, mistake: 0.02, guard: 0.9, punish: 0.9, read: 0.9, recov: 1, aggro: 0.7, superUse: 0.9,
+    whiff: 0.62, oos: 0.62, footsie: 0.42, shieldGrab: 0.62, combo: 0.58, escape: 0.5, edgeguard: 0.45, smartSuper: 0.7, antiAir: 0.5, adapt: 0.6 },
+  { name: 'めいじん',   react: [8, 1.5], minReact: 6, interval: [4, 7], err: 5, mistake: 0.012, guard: 0.94, punish: 0.94, read: 0.95, recov: 1, aggro: 0.72, superUse: 0.93,
+    whiff: 0.78, oos: 0.78, footsie: 0.52, shieldGrab: 0.76, combo: 0.74, escape: 0.65, edgeguard: 0.6, smartSuper: 0.85, antiAir: 0.65, adapt: 0.8 },
+  { name: 'さいきょう', react: [7, 1.2], minReact: 6, interval: [4, 6], err: 3.5, mistake: 0.006, guard: 0.97, punish: 0.97, read: 1, recov: 1, aggro: 0.74, superUse: 0.95,
+    whiff: 0.9, oos: 0.9, footsie: 0.6, shieldGrab: 0.88, combo: 0.88, escape: 0.8, edgeguard: 0.72, smartSuper: 0.95, antiAir: 0.8, adapt: 1 }
 ];
+const CPU_MAX = CPU_LV.length - 1;
 const VKEYS = ['l', 'r', 'u', 'd', 'a', 's', 'g', 'x'];
 const HOLD = 1e9;
 const ri = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
@@ -855,7 +865,7 @@ function snapshot(f) {
   const m = f.move;
   return { x: f.x, y: f.y, vx: f.vx + f.kbx, vy: f.vy + f.kby, state: f.state, t: f.t, grounded: f.grounded, percent: f.percent,
     facing: f.facing, w: f.w, h: f.h, mid: m ? m.id : null, kind: m ? m.kind : null, su: m ? startupOf(f, m) : 0,
-    active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps };
+    active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps, ll: f.landLen || 0 };
 }
 function reachOf(f, id, oppHalfW) { const m = MOVES[id], r = f.st.reach; return (Math.abs(m.box.x) + m.box.w / 2) * r + oppHalfW * 0.85; }
 class CpuAI {
@@ -866,10 +876,13 @@ class CpuAI {
     this.queue = []; this.now = 0; this.cool = ri(20, 45); this.delay = this.sampleDelay();
     // 個体ごとのクセ(毎試合すこし違う)
     this.habit = { jab: rnd(0.8, 1.3), smash: rnd(0.6, 1.1), grab: rnd(0.5, 1.0), shield: rnd(0.5, 1.0), wait: rnd(0.5, 1.0), air: rnd(0.4, 0.9) };
-    this.seen = { shield: 1, attack: 1, grab: 1 }; this.lastSeq = 0;
+    this.seen = { shield: 1, attack: 1, grab: 1 }; this.lastSeq = 0; this.airSeen = 1; this.calmT = 0; this.pctSum = 0; this.advKey = null; this.aaUntil = 0; this.airPain = 0; this.prevSt = 'idle';
+    // 上級者はキャラの長所を活かす: ハブラシはふわふわで対空に弱いので地上でリーチを活かす
+    const me = game.fighters[pi]; this.airK = this.P.footsie && me && me.c.id === 'brush' ? 1 - this.P.footsie * 0.9 : 1; this.prevPct = 0; this.ssUntil = 0;
     this.reactSeq = -1; this.punishSeq = -1; this.respawnWait = ri(15, 60); this.busyUntil = 0; this.moveDir = 0; this.edgeMargin = rnd(-10, 25) + (lv - 3) * 6;
   }
-  sampleDelay() { const [m, sd] = this.P.react; return Math.max(9, Math.round(m + gauss() * sd)); }
+  sampleDelay() { const [m, sd] = this.P.react; return Math.max(this.P.minReact || 9, Math.round(m + gauss() * sd)); }
+  dk(d) { return d < 0 ? 'l' : 'r'; }
   view() { const h = game.hist[1 - this.pi]; return h[Math.max(0, h.length - 1 - this.delay)]; }
   // --- 仮想キー操作 ---
   tap(k, dur, at) { this.queue.push({ at: this.now + (at || 0), k, dur: dur || ri(4, 8) }); }
@@ -879,6 +892,9 @@ class CpuAI {
   update(f, o) {
     this.now++;
     if (!superReady(f)) this.superHoldUntil = null;
+    const ps = f.percent + o.percent + f.stocks * 1000 + o.stocks * 1000; if (ps !== this.pctSum) { this.pctSum = ps; this.calmT = this.now; }
+    if (f.percent > this.prevPct && (this.prevSt === 'air' || this.prevSt === 'attack' && f.move && f.move.air)) this.airPain++; // 空中で落とされた回数を覚える
+    this.prevPct = f.percent; this.prevSt = f.state;
     const v = this.view();
     if (v) {
       this.observe(v);
@@ -908,9 +924,9 @@ class CpuAI {
     return this.out;
   }
   observe(v) {
-    if (v.seq !== this.lastSeq) { this.lastSeq = v.seq; if (v.mid === 'grab') this.seen.grab++; else if (v.mid) this.seen.attack++; }
+    if (v.seq !== this.lastSeq) { this.lastSeq = v.seq; if (v.mid === 'grab') this.seen.grab++; else if (v.mid) this.seen.attack++; if (v.mid === 'nair' || v.mid === 'fair' || v.mid === 'uair') this.airSeen++; }
     if (v.state === 'shield' && this.now % 10 === 0) this.seen.shield += 0.5;
-    if (this.now % 120 === 0) for (const k in this.seen) this.seen[k] = 1 + (this.seen[k] - 1) * 0.85; // 古い記憶は薄れる
+    if (this.now % 120 === 0) { const k0 = 0.85 + 0.1 * (this.P.adapt || 0); for (const k in this.seen) this.seen[k] = 1 + (this.seen[k] - 1) * k0; this.airSeen = 1 + (this.airSeen - 1) * k0; this.airPain *= k0; } // 古い記憶は薄れる(上級者ほど長く覚える)
   }
   onStage(f) { return f.x > STAGE.x1 - 4 && f.x < STAGE.x2 + 4 && f.y <= STAGE.y + 2; }
   edgeSafety(f) {
@@ -947,7 +963,7 @@ class CpuAI {
       const id = v.mid.slice(6), front = (f.x - v.x) * v.facing > -24, ady = Math.abs(v.y - f.y);
       const danger = id === 'neko' ? front && adx < 400 && ady < 70 : id === 'ninjin' ? front && ady < 80 : id === 'mug' ? adx < 180 && ady < 160 : front && adx < 620 && ady < 80;
       if (danger && Math.random() < Math.min(0.95, this.P.guard * 1.1)) {
-        this.releaseAll(); const r = Math.random(), away = dx > 0 ? -1 : 1;
+        this.releaseAll(); const r = Math.random() * (1 - (this.P.smartSuper || 0) * 0.8), away = dx > 0 ? -1 : 1;
         const horiz = id === 'ninjin' || id === 'brush';
         if (!f.grounded) { if (f.jumps > 0 && horiz) this.tap('u', 6, 0); }
         else if (horiz && r < 0.5) { this.tap('u', ri(10, 14), ri(0, 2)); this.tap('u', 6, ri(16, 20)); }
@@ -958,6 +974,7 @@ class CpuAI {
       }
     }
     // 相手の大きなスキ(空振りの後隙)に反撃
+    if (this.P.whiff) { this.reactAdv(f, v, dx, adx, canAct); return; }
     if (v.state === 'attack' && v.t >= v.su + v.active && v.seq !== this.punishSeq && (v.kind === 'strong' || v.kind === 'super' || v.mid === 'grab')) {
       this.punishSeq = v.seq;
       const myR = reachOf(f, 'fsmash', v.w / 2);
@@ -970,6 +987,80 @@ class CpuAI {
         this.busy(ri(18, 28));
       }
     }
+  }
+  // ---- Lv4〜: 確定反撃・ガード後の反撃・対空 ----
+  // 見えている相手の姿(反応時間ぶん前)から残りのスキを見積もり、その時間で間に合う技だけを選ぶ
+  go(f, d, travel, act) {
+    this.releaseAll(); const t = Math.max(0, Math.round(travel)), turn = f.grounded && f.facing !== d && t === 0;
+    const s0 = t > 0 ? t : turn ? 2 : 0;
+    if (t > 0 && act !== 'fsmash') this.tap(this.dk(d), t, 0); else if (turn && act !== 'fsmash') this.tap(this.dk(d), 2, 0);
+    switch (act) {
+      case 'jab': this.tap('a', 4, s0 + 1); if (Math.random() < 0.6) this.tap('a', 4, s0 + 1 + ri(11, 14)); break;
+      case 'grab': this.tap('g', 12, s0 + 1); this.tap('a', 5, s0 + 3); break;
+      case 'oos': this.tap('a', 5, 0); break;
+      case 'fsmash': this.tap(this.dk(d), t + 5, 0); this.tap('s', 5, t > 0 ? t : 1); break;
+      case 'utilt': this.hold.u = 0; this.tap('u', 4, s0); this.tap('a', 5, s0 + 1); break;
+      case 'usmash': this.hold.u = 0; this.tap('u', 4, s0); this.tap('s', 5, s0 + 1); break;
+    }
+  }
+  reactAdv(f, v, dx, adx, canAct) {
+    const P = this.P, d = dx > 0 ? 1 : -1, ady = Math.abs(v.y - f.y), inShield = f.state === 'shield';
+    let rem = -1, key = null;
+    if (v.state === 'attack' && v.t >= v.su + v.active) { rem = v.su + v.active + v.rec - v.t; key = 'a' + v.seq; }
+    else if (v.state === 'landing' && v.ll >= 6) { rem = v.ll - v.t; key = 'l' + (this.now - v.t >> 2); }
+    else if (v.state === 'stunned' || v.state === 'helpless' && v.grounded) { rem = 30; key = 's' + (this.now - v.t >> 3); }
+    if (rem > 0 && key !== this.advKey && (canAct || inShield) && ady < 50 && v.grounded !== false) {
+      this.advKey = key;
+      const real = rem - this.delay, big = v.kind === 'strong' || v.kind === 'super' || v.mid === 'grab' || v.state !== 'attack';
+      if (real >= 3 && Math.random() < (inShield ? P.oos : big ? P.punish : P.whiff)) {
+        const rn = f.st.run * 0.85, tr = r => Math.max(0, adx - r + 4) / rn + (adx > r ? 2 : 0);
+        const jabR = reachOf(f, 'jab', v.w / 2), grabR = reachOf(f, 'grab', v.w / 2), smR = reachOf(f, 'fsmash', v.w / 2);
+        const su = id => startupOf(f, MOVES[id]), kill = v.percent > 85 + (v.w > 50 ? 15 : 0);
+        let act = null, t = 0;
+        if (inShield) { if (adx < grabR + 6 && real >= su('grab') + 1) act = 'oos'; }
+        else if (kill && real >= su('fsmash') + tr(smR)) { act = 'fsmash'; t = tr(smR); }
+        else if (real >= su('grab') + 2 + tr(grabR) && (tr(grabR) === 0 ? f.facing === d : tr(grabR) >= 7)) { act = 'grab'; t = tr(grabR); }
+        else if (real >= su('jab') + 1 + tr(jabR)) { act = 'jab'; t = tr(jabR); }
+        else if (real >= su('fsmash') + tr(smR)) { act = 'fsmash'; t = tr(smR); }
+        if (act) { this.go(f, d, t, act); this.busy(Math.round(t) + 24); return; }
+      }
+    }
+    // ガード中に相手が目の前まで来た(つかみが来そう) → ガードを解いてジャンプで逃げる/空中攻撃
+    if (P.shieldGrab && inShield && adx < 95 && (v.state === 'run' || v.state === 'idle') && this.now >= this.ssUntil) {
+      this.ssUntil = this.now + 24;
+      if (Math.random() < P.shieldGrab * 0.6) { this.releaseAll(); this.hold.g = 0; this.tap('u', 3, 0); this.tap('a', 5, ri(5, 8)); this.busy(20); return; }
+    }
+    // 対空: 空中から飛び込んでくる相手を上攻撃で落とす(着地点を見越す)
+    if (P.antiAir && !v.grounded && canAct && this.now >= this.aaUntil && v.state !== 'hitstun') {
+      const T = this.delay + 5, px = v.x + v.vx * T, py = v.y + v.vy * T + 0.3 * T * T, pdy = py - f.y;
+      if (Math.abs(px - f.x) < 62 && pdy > -150 && pdy < -35 && v.vy > -3) {
+        this.aaUntil = this.now + 30;
+        const tot = this.seen.attack + this.seen.shield + this.seen.grab;
+        if (Math.random() < P.antiAir * (0.7 + Math.min(0.6, this.airSeen / tot))) { this.go(f, d, 0, v.percent > 95 ? 'usmash' : 'utilt'); this.busy(22); }
+      }
+    }
+  }
+  // ふっとばした相手への追撃(落下地点を予測して上攻撃・空中攻撃でつなぐ)
+  comboTry(f, v, adx, dy) {
+    const T = this.delay + 8, px = v.x + v.vx * T * 0.8, py = Math.min(STAGE.y, v.y + v.vy * T * 0.8 + 0.25 * T * T);
+    const pdx = px - f.x, apdx = Math.abs(pdx), pdy = py - f.y, dd = pdx >= 0 ? 1 : -1;
+    if (px < STAGE.x1 - 40 || px > STAGE.x2 + 40) return false; // 場外は崖の処理へ
+    const nairR = reachOf(f, 'nair', v.w / 2);
+    this.hold.g = 0;
+    if (f.grounded) {
+      if (pdy > -45 && apdx < reachOf(f, 'jab', v.w / 2)) { this.go(f, dd, 0, 'jab'); this.busy(16); return true; }
+      if (pdy <= -45 && pdy > -150 && apdx < 60) { this.go(f, dd, 0, v.percent > 100 ? 'usmash' : 'utilt'); this.busy(22); return true; }
+      if (pdy <= -150 && pdy > -320 && apdx < 150) { this.releaseAll(); this.setMove(apdx > 20 ? dd : 0); this.tap('u', ri(8, 11), 0); this.tap('u', 4, ri(12, 15)); this.tap('a', 5, ri(17, 21)); this.busy(26); return true; }
+      if (pdy > -150 && apdx < 230) { this.releaseAll(); this.setMove(dd); this.tap('u', pdy < -80 ? ri(6, 8) : 2, 0); if (f.facing === dd && v.percent > 70) this.tap('s', 5, ri(7, 10)); else this.tap('a', 5, ri(6, 9)); this.busy(24); return true; }
+      if (apdx < 380) { this.setMove(dd); return true; }
+      return false;
+    }
+    if (f.state !== 'air') return false;
+    this.setMove(apdx > 16 ? dd : 0);
+    if (pdy < -40 && pdy > -140 && apdx < 70) { this.hold.u = 0; this.tap('u', 5, 0); this.tap('a', 5, 1); this.busy(14); }
+    else if (Math.abs(pdy) < 70 && apdx < nairR + 16) { if (f.facing === dd && Math.random() < 0.5) this.tap('s', 5); else this.tap('a', 5); this.busy(14); }
+    else if (pdy < -120 && f.jumps > 0 && apdx < 160 && f.vy > -2) this.tap('u', 6);
+    return true;
   }
   recover(f) {
     const side = f.x < 640 ? -1 : 1, edgeX = side < 0 ? STAGE.x1 : STAGE.x2;
@@ -991,20 +1082,36 @@ class CpuAI {
   }
   superAI(f, v, d, adx, dy) {
     const P = this.P;
-    if (this.superHoldUntil == null) this.superHoldUntil = this.now + (Math.random() < 0.35 ? ri(60, 420) : ri(0, 30));
+    if (this.superHoldUntil == null) this.superHoldUntil = this.now + (Math.random() < 0.35 * (1 - (P.smartSuper || 0) * 0.6) ? ri(60, 420) : ri(0, 30));
     if (this.now < this.superHoldUntil) return false;
     const id = f.c.id, ady = Math.abs(dy);
     const inRange = id === 'neko' ? adx < 300 && ady < 40 : id === 'ninjin' ? adx < 590 && ady < 45 : id === 'mug' ? adx < 120 && ady < 110 : adx < 540 && ady < 50 && v.grounded;
     const bad = ['shield', 'roll', 'spot', 'airdodge', 'dead', 'respawn'].includes(v.state);
     const opening = ['landing', 'hitstun', 'stunned', 'helpless'].includes(v.state) || (v.state === 'attack' && v.t >= v.su);
-    const waste = Math.random() < P.mistake * 0.12;
-    if ((inRange && !bad && Math.random() < P.superUse * (opening ? 1.4 : 1)) || waste) {
+    const sm = P.smartSuper || 0, waste = Math.random() < P.mistake * 0.12 * (1 - sm);
+    const good = opening && (v.state !== 'hitstun' || v.percent > 50) || (v.kind === 'super' && v.t >= v.su);
+    const pUse = sm ? (good ? Math.max(P.superUse, sm) : P.superUse * (1 - 0.8 * sm)) : P.superUse * (opening ? 1.4 : 1);
+    if ((inRange && !bad && Math.random() < pUse) || waste) {
       this.releaseAll();
       if (f.facing !== d) this.tap(d < 0 ? 'l' : 'r', 3, 0);
       this.tap('x', 5, 1); this.busy(ri(60, 80)); this.superHoldUntil = null;
       return true;
     }
     return false;
+  }
+  // 崖外の相手へ:少しだけ飛び出して空中攻撃 → すぐ戻る(深追いはしない)
+  edgeguard(f, v) {
+    const side = v.x < 640 ? -1 : 1, edgeX = side < 0 ? STAGE.x1 : STAGE.x2, T = this.delay + 12;
+    const px = v.x + v.vx * T, py = v.y + v.vy * T + 0.3 * T * T, outX = (px - edgeX) * side;
+    if (Math.abs(f.x - edgeX) > 90) return false;
+    if (v.mid === 'recover' || v.state === 'airdodge' || v.state === 'dead' || v.state === 'respawn') return false;
+    if (!(outX > -10 && outX < 140 && py < STAGE.y + 60 && py > STAGE.y - 170)) return false;
+    if (Math.random() > this.P.edgeguard) return false;
+    this.releaseAll();
+    if (f.facing !== side) this.tap(this.dk(side), 2, 0);
+    this.tap('u', ri(3, 5), 1); this.tap(this.dk(side), ri(7, 10), 2);
+    if (py < STAGE.y - 70) { this.tap('u', 4, 8); this.tap('a', 5, 10); } else this.tap('s', 5, ri(7, 9));
+    this.busy(16); return true;
   }
   decide(f, o, v) {
     const P = this.P, st = f.state;
@@ -1025,14 +1132,26 @@ class CpuAI {
     const oppOff = v.x < STAGE.x1 - 10 || v.x > STAGE.x2 + 10 || v.y > STAGE.y + 20;
     if (oppOff && f.grounded) {
       const edge = v.x < 640 ? STAGE.x1 + 40 : STAGE.x2 - 40;
+      if (P.edgeguard && this.edgeguard(f, v)) return;
       if (adx < smashR && Math.abs(dy) < 70 && Math.random() < P.aggro) { this.setMove(0); this.tap(d < 0 ? 'l' : 'r', 4, 0); this.tap(Math.random() < 0.5 ? 's' : 'a', 5, 1); this.busy(20); }
       else this.setMove(Math.abs(f.x - edge) > 30 ? (edge > f.x ? 1 : -1) : 0);
       return;
     }
     // 必殺技(ゲージ満タン): 当たりそうな時に使う。わざと温存したり、焦って無駄撃ちしたりもする
     if (f.grounded && superReady(f) && this.superAI(f, v, d, adx, dy)) return;
+    // [Lv4〜] ふっとんだ相手への追撃
+    if (P.combo && v.state === 'hitstun' && !mistake && Math.random() < P.combo && this.comboTry(f, v, adx, dy)) return;
     // 空中
     if (!f.grounded) {
+      // [Lv4〜] 下で相手が待ち構えている(お手玉されそう) → 横へ逃げて急降下、真上なら空中ジャンプで横にずれる
+      if (P.escape && v.grounded && dy > 30 && adx < 160 && f.y < STAGE.y - 20 && Math.random() < P.escape) {
+        let away = f.x < v.x ? -1 : 1; if ((away < 0 && f.x < STAGE.x1 + 110) || (away > 0 && f.x > STAGE.x2 - 110)) away = -away;
+        this.setMove(away);
+        if (adx < 50 && f.jumps > 0 && f.vy > -1 && Math.random() < 0.5) { this.hold.u = 0; this.tap('u', 5, 0); }
+        else if (f.vy > 0.5 && adx > 70) this.tap('d', 4, 0);
+        else if (adx < 70 && dy < 110 && f.vy > 0 && Math.random() < 0.4) this.tap('a', 5, 0);
+        this.busy(8); return;
+      }
       if (adx > 18) this.setMove(d); else this.setMove(0);
       if (Math.abs(dy) < 70 && adx < nairR + 10 && Math.random() < P.aggro) {
         if (dy < -35) { this.hold.u = 0; this.tap('u', 6, 0); this.tap('a', 5, 1); }
@@ -1051,12 +1170,31 @@ class CpuAI {
       else { this.tap('u', ri(8, 12), 0); this.tap('a', 5, ri(14, 22)); this.tap('u', 6, ri(18, 24)); }
       this.busy(22); return;
     }
+    // [Lv4〜] ガードを固めている相手はつかみに行く
+    if (P.shieldGrab && f.grounded && v.state === 'shield' && adx < grabR + 70 && !mistake && Math.random() < P.shieldGrab) {
+      const t = Math.max(0, adx - grabR + 4) / (f.st.run * 0.85);
+      if (t === 0 && f.facing === d) { this.go(f, d, 0, 'grab'); this.busy(28); return; }
+      if (t > 0) { this.go(f, d, Math.max(7, t + 1), 'grab'); this.busy(Math.round(t) + 30); return; }
+    }
+    // [Lv4〜] 差し合い: 相手の技が届かないギリギリで待って、空振りを誘う(長く膠着したら自分から攻める)
+    if (P.footsie && f.grounded && v.grounded && !mistake && this.now - this.calmT < 150 && v.state !== 'shield') {
+      const oR = reachOf(o, 'fsmash', f.w / 2) + 12, oJ = reachOf(o, 'jab', f.w / 2);
+      // リーチで勝っているなら、相手の届かない距離から先端を当てる
+      if (adx < jabR - 2 && adx > oJ + 6 && v.state !== 'attack' && Math.random() < P.footsie) { this.go(f, d, 0, 'jab'); this.busy(16); return; }
+      if (adx < smashR - 6 && adx > oR - 4 && v.state !== 'attack' && Math.random() < P.footsie * 0.5) { this.go(f, d, 0, 'fsmash'); this.busy(36); return; }
+      if (adx > jabR + 4 && adx < oR + 50 && Math.random() < P.footsie) {
+        this.hold.g = 0;
+        if (adx < oR) this.setMove(-d); else if (adx > oR + 35) this.setMove(d);
+        else { this.setMove(0); if (Math.random() < 0.3) { this.tap(this.dk(d), ri(3, 5), 0); this.tap(this.dk(-d), ri(3, 5), ri(6, 9)); } }
+        return;
+      }
+    }
     // 間合い(人間らしいブレ込み)
     const want = (mistake ? rnd(0.5, 1.6) : 1) * jabR * rnd(0.7, 1.0) + gauss() * P.err * 0.5;
     if (adx > smashR + 20 + gauss() * P.err) {
       // 接近:歩く/走る、ときどきジャンプで飛び込む
       this.hold.g = 0; this.setMove(d);
-      if (adx < smashR + 160 && Math.random() < 0.12 * this.habit.air * (P.aggro / 0.6)) {
+      if (adx < smashR + 160 && Math.random() < 0.12 * this.airK * this.habit.air * (P.aggro / 0.6) / (1 + (P.adapt || 0) * this.airPain * 0.4)) {
         const hop = Math.random() < 0.5 ? 2 : ri(6, 9);
         this.tap('u', hop, 0); this.tap('a', 5, ri(10, 18)); this.busy(ri(26, 36));
       }
@@ -1072,7 +1210,7 @@ class CpuAI {
       grab: this.habit.grab * (adx < grabR + 6 ? 1.2 : 0.15) * (1 + rd * 3 * rShield),
       shield: this.habit.shield * (1 + rd * 2.5 * rAtk),
       wait: this.habit.wait * (1.3 - P.aggro),
-      air: this.habit.air * 0.5,
+      air: this.airK * this.habit.air * 0.5 / (1 + (P.adapt || 0) * this.airPain * 0.4),
       space: (adx < want ? 0.9 : 0.2)
     };
     let pick;
@@ -1084,7 +1222,7 @@ class CpuAI {
       case 'jab': { face(); const n = Math.random() < 0.4 ? ri(2, 3) : 1; for (let i = 0; i < n; i++) this.tap('a', ri(4, 7), 2 + i * ri(11, 15)); this.busy(8 + n * 13); break; }
       case 'smash': this.tap(d < 0 ? 'l' : 'r', ri(4, 6), 0); this.tap('s', ri(4, 7), 1); this.busy(ri(34, 44)); break;
       case 'grab': face(); this.tap('g', ri(10, 14), 1); this.tap('a', ri(4, 6), ri(2, 4)); this.busy(ri(26, 32)); break;
-      case 'shield': this.tap('g', ri(16, 34), ri(0, 2)); this.busy(ri(14, 24)); break;
+      case 'shield': { const k = 1 - (P.adapt || 0) * 0.4; this.tap('g', Math.round(ri(16, 34) * k), ri(0, 2)); this.busy(Math.round(ri(14, 24) * k)); break; }
       case 'air': { this.setMove(d); const hop = Math.random() < 0.6 ? 2 : ri(6, 9); this.tap('u', hop, 0); this.tap('a', 5, ri(8, 14)); this.busy(ri(26, 34)); break; }
       case 'space': this.setMove(-d); break;
       default: if (Math.random() < 0.4) this.setMove(Math.random() < 0.5 ? d : -d); break; // うろうろ
@@ -1153,8 +1291,8 @@ function tickSelect() {
       if (!s.ready) {
         if (inp.pl) { s.ci = (s.ci + 3) % 4; sfx('menu'); used[owner] = true; }
         if (inp.pr) { s.ci = (s.ci + 1) % 4; sfx('menu'); used[owner] = true; }
-        if (inp.pd) { game.ctrl[i] = (game.ctrl[i] + 1) % 6; sfx('menu'); used[owner] = true; }
-        if (inp.pu) { game.ctrl[i] = (game.ctrl[i] + 5) % 6; sfx('menu'); used[owner] = true; }
+        if (inp.pd) { game.ctrl[i] = (game.ctrl[i] + 1) % (CPU_MAX + 1); sfx('menu'); used[owner] = true; }
+        if (inp.pu) { game.ctrl[i] = (game.ctrl[i] + CPU_MAX) % (CPU_MAX + 1); sfx('menu'); used[owner] = true; }
         if (inp.pa && game.t > 8) { s.ready = true; s.justReady = true; sfx('ok'); used[owner] = true; }
         if (inp.pg && game.t > 8) {
           used[owner] = true;
@@ -2051,8 +2189,8 @@ function renderHowto() {
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(660, 420, 560, 250, 18); ctx.fill();
   text('ルール', 940, 448, 22, '#ffd23d', 'center', '900');
   const rules = game.mobile
-    ? ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '攻撃を当てる/受けると必殺技ゲージがたまる', '満タンで「必殺」ボタン!(ガード・回避・ジャンプでかわせる)', 'ガード+スティック←→で回避、↓でその場回避', 'キャラ選択で相手キャラとCPUの強さ(Lv1〜5)を選ぶ', '左上の Ⅱ ボタンでポーズ']
-    : ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '攻撃を当てる/受けると必殺技ゲージがたまる', '満タンで必殺技!(ガード・回避・ジャンプでかわせる)', 'ガード中に←→で回避、↓でその場回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜5)と対戦', 'Esc / P でポーズ'];
+    ? ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '攻撃を当てる/受けると必殺技ゲージがたまる', '満タンで「必殺」ボタン!(ガード・回避・ジャンプでかわせる)', 'ガード+スティック←→で回避、↓でその場回避', 'キャラ選択で相手キャラとCPUの強さ(Lv1〜7)を選ぶ', '左上の Ⅱ ボタンでポーズ']
+    : ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '攻撃を当てる/受けると必殺技ゲージがたまる', '満タンで必殺技!(ガード・回避・ジャンプでかわせる)', 'ガード中に←→で回避、↓でその場回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜7)と対戦', 'Esc / P でポーズ'];
   rules.forEach((r, i) => text('・' + r, 690, 476 + i * 22, 15, '#eef1ff', 'left', '700'));
   text(game.mobile ? 'どこかをタップでもどる' : '決定キー または ガードキー でもどる', W / 2, 700, 15, '#c9d1ff', 'center', '600');
   uiBtn(0, 0, W, H, () => { if (game.t > 10) { sfx('back'); setScene('title'); } });
@@ -2147,9 +2285,9 @@ function renderSelectMobile() {
     else {
       const lv = game.ctrl[1];
       text('Lv' + lv + ' ' + CPU_LV[lv].name, x + 440, y + 62, 18, '#ffd23d', 'right', '900');
-      for (let n = 1; n <= 5; n++) {
-        const bx = x + 18 + (n - 1) * 86, on = lv === n;
-        pillBtn(bx, y + 86, 78, 42, 'Lv' + n, on, 19, () => { game.ctrl[1] = n; game.editSlot = 1; sfx('menu'); });
+      for (let n = 1; n <= CPU_MAX; n++) {
+        const bx = x + 16 + (n - 1) * 62, on = lv === n;
+        pillBtn(bx, y + 86, 56, 42, 'Lv' + n, on, 17, () => { game.ctrl[1] = n; game.editSlot = 1; sfx('menu'); });
       }
     }
   }

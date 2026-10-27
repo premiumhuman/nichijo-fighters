@@ -1596,8 +1596,8 @@ function snapshot(f) {
 // low: Lv1〜3(確定反撃などの上級ロジックがないレベル)だけ使うクセの上書き。wary: Lv1〜3 の「大振りを見て離れる/つかむ」の頻度倍率
 const AI_STYLE = {
   neko:    { air: 1.7, jab: 0.9, smash: 0.9, grab: 1.0, aggro: 0.04, hop: 1.8, pounce: 0.55, low: { smash: 0.45 } },
-  ninjin:  { air: 0.8, jab: 1.6, smash: 0.8, grab: 1.1, aggro: 0.12, hop: 0.8, dashIn: 0.5 },
-  mug:     { air: 0.45, jab: 0.7, smash: 1.7, grab: 1.3, aggro: -0.04, hop: 0.4, armor: 0.55 },
+  ninjin:  { air: 0.8, jab: 1.6, smash: 0.8, grab: 1.1, aggro: 0.12, hop: 0.8, dashIn: 0.5, low: { aggro: 0.0, grab: 1.4 } },
+  mug:     { air: 0.45, jab: 0.7, smash: 1.7, grab: 1.3, aggro: -0.04, hop: 0.4, armor: 0.55, low: { armor: 0.3 } },
   brush:   { air: 0.5, jab: 1.3, smash: 1.1, grab: 0.8, aggro: 0, hop: 0.5, tipSpace: 0.6 },
   edamame: { air: 0.6, jab: 1.1, smash: 1.0, grab: 1.0, aggro: -0.1, hop: 0.6, zoner: true, wary: 0.15 }
 };

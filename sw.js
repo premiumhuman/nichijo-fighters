@@ -1,6 +1,6 @@
 // ニチジョウ・ファイターズ Service Worker(オフラインで遊べるようにキャッシュ)
 // VERSION は tools/bump-sw.js がファイル内容から自動で書き換えます(内容が変わると新しい版になる)
-const VERSION = 'nf-c557418ffc20';
+const VERSION = 'nf-928d4efb2fbc';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));

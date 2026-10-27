@@ -353,7 +353,7 @@ const CHARS = [
     } },
   { id: 'mug', name: 'マグカップ', type: 'パワー', desc: '重くて遅いが一撃が重い。|スマッシュはアーマー付き', color: '#4a90e2', alt: '#e84a5f',
     w: 58, h: 68, run: 4.4, gAcc: 0.75, air: 3.7, aAcc: 0.4, jump: 12.8, dj: 11.2, grav: 0.82, fall: 13, ff: 18.5,
-    weight: 130, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 0.95, throw: { dmg: 11, base: 8.2, gr: 0.13, ang: 40 }, bars: [1, 5, 5, 1, 2],
+    weight: 133, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 0.95, throw: { dmg: 11, base: 8.2, gr: 0.13, ang: 40 }, bars: [1, 5, 5, 1, 2],
     moves: {
       jab: { startup: 5, active: 3, rec: 10, dmg: 5, base: 5.4, gr: 0.04, box: { x: 34, y: -44, w: 42, h: 28 } },
       utilt: { startup: 7, dmg: 9, base: 7, box: { x: 4, y: -116, w: 76, h: 64 } },
@@ -366,7 +366,7 @@ const CHARS = [
     } },
   { id: 'brush', name: 'ハブラシ', type: 'リーチ', desc: '細長いブラシで間合いを制す。|先っぽを当てると強い', color: '#2ec4b6', alt: '#ff7eb6',
     w: 36, h: 67, run: 6.5, gAcc: 1.1, air: 5.2, aAcc: 0.55, jump: 13.2, dj: 11.6, grav: 0.56, fall: 9.2, ff: 14.5,
-    weight: 103, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 1.0, meterGain: 1.3, bars: [2, 3, 3, 2, 5],
+    weight: 102, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 1.0, meterGain: 1.3, bars: [2, 3, 3, 2, 5],
     moves: {
       jab: { startup: 6, active: 3, rec: 15, box: { x: 64, y: -50, w: 60, h: 16 }, dmg: 3.6, base: 3.8, gr: 0.03, ang: 30, tip: true },
       utilt: { startup: 7, box: { x: 12, y: -104, w: 38, h: 72 }, dmg: 6 },
@@ -906,7 +906,7 @@ function fireShot(f, lv, stored) {
   const n = myBeans(f), st = beanStats(lv);
   if (stored) f.charge = 0;
   if ((st.big && n.big > 0) || (!st.big && n.small >= 1)) {
-    // 画面に出せる豆は 小2つ・大1つまで。出せない時はためを保存して終わり
+    // 画面に出せる豆は 小1つ・大1つまで(小豆を連打で弾幕にしない設計)。出せない時はためを保存して終わり
     if (lv >= 8) f.charge = Math.max(f.charge, lv);
     f.state = 'idle'; f.t = 0; f.chg = 0; puff(f.x + f.facing * 24, f.y - 30, 4, '#d8ff8a'); return;
   }

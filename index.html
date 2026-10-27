@@ -341,7 +341,7 @@ const CHARS = [
     } },
   { id: 'ninjin', name: 'ニンジン', type: 'ラッシュ', desc: 'いちばん速くて軽い。|連打とスライディングで攻める', color: '#ff7a1a', alt: '#ffd23d',
     w: 40, h: 62, run: 9.0, gAcc: 1.9, air: 6.0, aAcc: 0.9, jump: 14.6, dj: 14.2, grav: 0.78, fall: 11.2, ff: 17,
-    weight: 85, jumps: 2, power: 0.95, reach: 0.9, lag: 0, endlag: 1.0, upB: 1.35, bars: [5, 2, 1, 3, 1],
+    weight: 86, jumps: 2, power: 0.95, reach: 0.9, lag: 0, endlag: 1.0, upB: 1.35, bars: [5, 2, 1, 3, 1],
     moves: {
       jab: { startup: 2, active: 2, rec: 4, dmg: 2, base: 3.6, gr: 0.02, ang: 45, box: { x: 28, y: -42, w: 38, h: 24 } },
       utilt: { startup: 4, rec: 8, dmg: 5 },
@@ -353,7 +353,7 @@ const CHARS = [
     } },
   { id: 'mug', name: 'マグカップ', type: 'パワー', desc: '重くて遅いが一撃が重い。|スマッシュはアーマー付き', color: '#4a90e2', alt: '#e84a5f',
     w: 58, h: 68, run: 4.4, gAcc: 0.75, air: 3.7, aAcc: 0.4, jump: 12.8, dj: 11.2, grav: 0.82, fall: 13, ff: 18.5,
-    weight: 133, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 0.95, throw: { dmg: 11, base: 8.2, gr: 0.13, ang: 40 }, bars: [1, 5, 5, 1, 2],
+    weight: 128, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 0.95, throw: { dmg: 11, base: 8.2, gr: 0.13, ang: 40 }, bars: [1, 5, 5, 1, 2],
     moves: {
       jab: { startup: 5, active: 3, rec: 10, dmg: 5, base: 5.4, gr: 0.04, box: { x: 34, y: -44, w: 42, h: 28 } },
       utilt: { startup: 7, dmg: 9, base: 7, box: { x: 4, y: -116, w: 76, h: 64 } },
@@ -440,6 +440,7 @@ for (const c of CHARS) {
 const CHG_MAX = 45, CHG_BIG = 15;
 function beanStats(lv) { const k = clamp(lv / CHG_MAX, 0, 1); return { r: 9 + 15 * k, sp: 14 - 4 * k, dmg: 5.4 + 12.6 * k, base: 5.2 + 5.4 * k, gr: 0.03 + 0.16 * k, ang: 30 + 8 * k, life: 62 + 30 * k, kind: k > 0.6 ? 'strong' : 'light', big: lv >= CHG_BIG }; }
 const THROW = { dmg: 9, base: 7.2, gr: 0.115, ang: 42 };
+const KB_GROWTH = 1.2; // ダメージ%によるふっとびの伸び(全キャラ共通)
 const BUF = 6, JUMPSQUAT = 3, SHIELD_MAX = 50, KB_DECAY = 0.42;
 
 // ===================== ステージ =====================
@@ -812,7 +813,7 @@ function applyDamage(a, b, m, dir, isThrow) {
   a.stats.dealt += dmg; b.stats.maxPct = Math.max(b.stats.maxPct, b.percent);
   if (!m.noMeter) { a.meter = Math.min(SUPER_MAX, a.meter + dmg * SUPER_GAIN_DEAL * (a.st.meterGain || 1)); b.meter = Math.min(SUPER_MAX, b.meter + dmg * SUPER_GAIN_TAKE * (b.st.meterGain || 1)); }
   const wf = Math.sqrt(100 / b.st.weight);
-  const kb = (m.base * (0.75 + 0.25 * pw) + b.percent * m.gr) * wf;
+  const kb = (m.base * (0.75 + 0.25 * pw) + b.percent * m.gr * KB_GROWTH) * wf;
   const ang = m.ang * Math.PI / 180;
   b.kbx = Math.cos(ang) * kb * dir; b.kby = -Math.sin(ang) * kb;
   if (b.grounded && b.kby > -2) b.kby = -2;
@@ -1047,7 +1048,7 @@ class CpuAI {
     this.habit = { jab: rnd(0.8, 1.3), smash: rnd(0.6, 1.1), grab: rnd(0.5, 1.0), shield: rnd(0.5, 1.0), wait: rnd(0.5, 1.0), air: rnd(0.4, 0.9) };
     this.seen = { shield: 1, attack: 1, grab: 1 }; this.lastSeq = 0; this.airSeen = 1; this.calmT = 0; this.pctSum = 0; this.advKey = null; this.aaUntil = 0; this.airPain = 0; this.prevSt = 'idle';
     // 上級者はキャラの長所を活かす: ハブラシはふわふわで対空に弱いので地上でリーチを活かす
-    const me = game.fighters[pi]; this.S = AI_STYLE[me ? me.c.id : 'neko'] || AI_STYLE.neko; this.airK = this.S.air; this.ag = clamp(this.P.aggro + this.S.aggro, 0.2, 0.9); this.projSeen = {}; this.armorSeq = -1; this.prevPct = 0; this.ssUntil = 0;
+    const me = game.fighters[pi]; this.S = AI_STYLE[me ? me.c.id : 'neko'] || AI_STYLE.neko; this.airK = this.S.air; this.ag0 = this.ag = clamp(this.P.aggro + this.S.aggro, 0.2, 0.9); this.stall = 0; this.projSeen = {}; this.armorSeq = -1; this.prevPct = 0; this.ssUntil = 0;
     this.reactSeq = -1; this.punishSeq = -1; this.respawnWait = ri(15, 60); this.busyUntil = 0; this.moveDir = 0; this.edgeMargin = rnd(-10, 25) + (lv - 3) * 6;
   }
   sampleDelay() { const [m, sd] = this.P.react; return Math.max(this.P.minReact || 9, Math.round(m + gauss() * sd)); }
@@ -1349,7 +1350,7 @@ class CpuAI {
     }
     const own = myBeans(f), roomBack = d > 0 ? f.x - STAGE.x1 : STAGE.x2 - f.x;
     const busyOpp = ['shield', 'roll', 'spot', 'airdodge'].includes(v.state);
-    if (adx < 250 && roomBack > 100 && Math.random() < 0.35 + 0.35 * P.read) { this.hold.g = 0; this.setMove(-d); return true; }
+    if (adx < 250 && roomBack > 100 && Math.random() < (0.35 + 0.35 * P.read) * (1 - 0.7 * this.stall)) { this.hold.g = 0; this.setMove(-d); return true; }
     if (f.charge >= CHG_MAX - 2 && aligned && !busyOpp && own.big === 0 && Math.random() < 0.3 + 0.5 * P.read) { this.setMove(0); this.tap(this.dk(d), 3, 0); this.tap('s', 4, 1); this.busy(24); return true; }
     const wantCharge = f.charge < CHG_MAX - 2 && adx > 260 && own.big === 0 && Math.random() < 0.3 + 0.3 * P.read;
     if (!wantCharge && aligned && f.charge === 0 && own.small < 1 && Math.random() < 0.3 + 0.25 * this.ag) { this.setMove(0); this.tap(this.dk(d), 3, 0); this.tap('s', 3, 1); this.busy(ri(14, 20)); return true; }
@@ -1363,6 +1364,10 @@ class CpuAI {
   }
   decide(f, o, v) {
     const P = this.P, st = f.state;
+    // 長く撃墜が起きないと、人間と同じくじれて攻めに出る(待ち合いでの膠着を防ぐ)
+    const lastKo = game.kos.length ? game.kos[game.kos.length - 1].t : 0;
+    this.stall = clamp((game.matchT - lastKo) / 60 - 40, 0, 60) / 60;
+    this.ag = clamp(this.ag0 + 0.3 * this.stall, 0.2, 0.95);
     if (st === 'respawn') { if (f.t > this.respawnWait) { this.tap(Math.random() < 0.5 ? 'd' : (f.x < 640 ? 'r' : 'l'), 5); } return; }
     if (f.grounded || st === 'dead' || st === 'respawn') this.recEp = null;
     if (st === 'dead' || st === 'grabbed') { this.releaseAll(); return; }

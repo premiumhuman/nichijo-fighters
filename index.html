@@ -1860,7 +1860,7 @@ function drawBrush(c, col, dark, F, pose, t) {
 }
 // --- エダマメ ---
 function drawEdamame(c, col, dark, F, pose, t) {
-  const w = c.w, h = c.h, r = w * 0.43, ys = [-h * 0.2, -h * 0.47, -h * 0.74];
+  const w = c.w, h = c.h, r = w * 0.43, ys = [-r - 3, -r - 3 - h * 0.25, -r - 3 - h * 0.5];   // いちばん下の豆が床にめり込まないように
   const bob = pose === 'idle' ? Math.sin(t * 0.1) * 1.2 : 0;
   feet(w, pose === 'run', t, dark);
   // 茎と葉っぱ
@@ -2504,7 +2504,7 @@ function renderHowto() {
   fullFill('rgba(0,0,0,0.25)');
   text('操作説明・あそびかた', W / 2, 44, 36, '#ffffff', 'center', '900', 6);
   if (game.mobile) drawTouchHelp(); else { drawControls(0, 340, 110); drawControls(1, 940, 110); }
-  text('必殺技:ネコ「ネコまっしぐら」・ニンジン「キャロットビーム」・マグカップ「熱々コーヒー噴火」・ハブラシ「ミントブラスト」', W / 2, 396, 17, '#ffd23d', 'center', '700', 4);
+  text('必殺技:ネコ「ネコまっしぐら」・ニンジン「キャロットビーム」・マグカップ「熱々コーヒー噴火」・ハブラシ「ミントブラスト」・エダマメ「まめまめガトリング」', W / 2, 396, 15, '#ffd23d', 'center', '700', 4);
   // 読み合い
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(60, 420, 560, 250, 18); ctx.fill();
   text('読み合いの三すくみ', 340, 448, 22, '#ffd23d', 'center', '900');

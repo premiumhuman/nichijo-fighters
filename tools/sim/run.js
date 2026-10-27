@@ -3,8 +3,9 @@ const { Worker } = require('worker_threads'); const fs = require('fs'); const os
 const reps = +process.argv[2] || 50, lv = +process.argv[3] || 4, patchFile = process.argv[4], label = process.argv[5] || 'run';
 const patch = patchFile && patchFile !== '-' ? fs.readFileSync(patchFile, 'utf8') : '';
 const file = require('path').join(__dirname, '../../index.html');
+const NAMES = ['ネコ', 'ニンジン', 'マグ', 'ハブラシ', 'エダマメ'], NC = NAMES.length;
 const jobs = [];
-for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) for (let r = 0; r < reps; r++) jobs.push({ c0: a, c1: b, lv0: lv, lv1: lv });
+for (let a = 0; a < NC; a++) for (let b = 0; b < NC; b++) for (let r = 0; r < reps; r++) jobs.push({ c0: a, c1: b, lv0: lv, lv1: lv });
 const nW = os.cpus().length; const chunks = Array.from({ length: nW }, () => []);
 jobs.forEach((j, i) => chunks[i % nW].push(j));
 const t0 = Date.now(); let done = 0; const results = [];
@@ -15,7 +16,7 @@ chunks.forEach(ch => {
   w.postMessage(ch);
 });
 function finish() {
-  const names = ['ネコ', 'ニンジン', 'マグ', 'ハブラシ'];
+  const names = NAMES;
   const ch = names.map(() => ({ w: 0, n: 0 })); const mu = names.map(() => names.map(() => ({ w: 0, n: 0 })));
   const sup = names.map(() => ({ used: 0, hit: 0, blk: 0 })); let superKos = 0;
   let ticks = 0, timeouts = 0, side0 = 0, nonMirror = 0; const koPct = names.map(() => []); let sd = 0, kos = 0; const sdBy = names.map(() => 0), deaths = names.map(() => 0);
@@ -33,7 +34,7 @@ function finish() {
   let s = `## ${label} (CPU Lv${lv} 同士, 各カード ${reps}試合×左右入替, 計 ${results.length}試合, ${((Date.now() - t0) / 1000).toFixed(0)}s)\n\n`;
   s += '| キャラ | 勝率(ミラー除く) | 95%CI | 試合数 | 撃墜された時の平均% | 自滅率 |\n|---|---|---|---|---|---|\n';
   names.forEach((n, i) => { const [p, e] = ci(ch[i].w, ch[i].n); const kp = koPct[i]; s += `| ${n} | ${p.toFixed(1)}% | ±${e.toFixed(1)} | ${ch[i].n} | ${(kp.reduce((a, b) => a + b, 0) / kp.length).toFixed(0)}% | ${(sdBy[i] / deaths[i] * 100).toFixed(0)}% |\n`; });
-  s += '\n対戦表(行キャラの勝率, 左右両方):\n\n| | ' + names.join(' | ') + ' |\n|---|---|---|---|---|\n';
+  s += '\n対戦表(行キャラの勝率, 左右両方):\n\n| | ' + names.join(' | ') + ' |\n|' + '---|'.repeat(NC + 1) + '\n';
   names.forEach((n, i) => { s += '| ' + n + ' | ' + names.map((_, j) => (mu[i][j].w / mu[i][j].n * 100).toFixed(0) + '%').join(' | ') + ' |\n'; });
   if (sup.some(x => x.used)) {
     s += '\n必殺技: | キャラ | 発動/被撃墜1回あたり | 命中率 | ガードされた率 |\n|---|---|---|---|\n';

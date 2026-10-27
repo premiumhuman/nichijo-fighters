@@ -1,11 +1,11 @@
 // 使い方: node ladder.js <reps per card per side> <lvA> <lvB> [patchfile]
-// lvA と lvB の CPU を全16カード(キャラ組合せ)×左右入替で戦わせ、lvA の勝率を出す
+// lvA と lvB の CPU を全25カード(キャラ組合せ)×左右入替で戦わせ、lvA の勝率を出す
 const { Worker } = require('worker_threads'); const fs = require('fs'); const os = require('os');
 const reps = +process.argv[2] || 10, A = +process.argv[3], B = +process.argv[4], patchFile = process.argv[5];
 const patch = patchFile && patchFile !== '-' ? fs.readFileSync(patchFile, 'utf8') : '';
 const file = require('path').join(__dirname, '../../index.html');
 const jobs = [];
-for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) for (let r = 0; r < reps; r++) { jobs.push({ c0: a, c1: b, lv0: A, lv1: B, aSide: 0 }); jobs.push({ c0: a, c1: b, lv0: B, lv1: A, aSide: 1 }); }
+for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) for (let r = 0; r < reps; r++) { jobs.push({ c0: a, c1: b, lv0: A, lv1: B, aSide: 0 }); jobs.push({ c0: a, c1: b, lv0: B, lv1: A, aSide: 1 }); }
 const nW = os.cpus().length; const chunks = Array.from({ length: nW }, () => []);
 jobs.forEach((j, i) => chunks[i % nW].push(j));
 const t0 = Date.now(); let done = 0; const results = [];

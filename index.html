@@ -316,6 +316,11 @@ function sfx(n, p) {
     case 'slash': for (let i = 0; i < 4; i++) setTimeout(() => { noise(0.07, 0.12, 5000); tone(900, 500, 0.06, 'sawtooth', 0.03); }, i * 70); break;
     case 'beam': tone(180, 120, 0.7, 'sawtooth', 0.09); tone(720, 680, 0.7, 'square', 0.03); noise(0.6, 0.1, 2200); break;
     case 'geyser': noise(0.8, 0.3, 700); tone(90, 40, 0.7, 'sawtooth', 0.12); break;
+    case 'pew': tone(900, 1500, 0.07, 'square', 0.035); break;
+    case 'bigshot': tone(300, 900, 0.18, 'square', 0.06); noise(0.12, 0.08, 2500); break;
+    case 'full': tone(1200, 1200, 0.08, 'sine', 0.06); tone(1800, 1800, 0.12, 'sine', 0.05); break;
+    case 'armor': tone(160, 120, 0.12, 'square', 0.07); noise(0.08, 0.1, 900); break;
+    case 'gatling': for (let i = 0; i < 9; i++) setTimeout(() => tone(800, 1400, 0.05, 'square', 0.03), i * 66); break;
     case 'mint': tone(1200, 2400, 0.35, 'sine', 0.07); tone(1600, 3200, 0.5, 'triangle', 0.05); noise(0.5, 0.12, 6000); break;
   }
 }
@@ -323,18 +328,68 @@ function sfx(n, p) {
 // ===================== キャラクター =====================
 // bars: スピード, パワー, 重さ, ジャンプ, リーチ
 const CHARS = [
-  { id: 'neko', name: 'ネコ', type: 'バランス', desc: '動物。クセがなく扱いやすい万能タイプ', color: '#ffb15c', alt: '#b8bfcc',
-    w: 46, h: 62, run: 6.4, gAcc: 1.2, air: 4.8, aAcc: 0.6, jump: 13.8, dj: 12.8, grav: 0.64, fall: 10.5, ff: 15.5,
-    weight: 100, jumps: 2, power: 1.0, reach: 1.0, lag: 0, bars: [3, 3, 3, 3, 3] },
-  { id: 'ninjin', name: 'ニンジン', type: 'スピード', desc: '野菜。速くて軽い。葉っぱで手数勝負', color: '#ff7a1a', alt: '#ffd23d',
-    w: 40, h: 62, run: 8.2, gAcc: 1.6, air: 5.7, aAcc: 0.8, jump: 14.4, dj: 14.6, grav: 0.74, fall: 10.5, ff: 16,
-    weight: 88, jumps: 2, power: 0.94, reach: 0.94, lag: -2, endlag: 1.14, upB: 1.4, bars: [5, 2, 2, 4, 2] },
-  { id: 'mug', name: 'マグカップ', type: 'パワー', desc: '日用品。重くて熱々コーヒーが強烈', color: '#4a90e2', alt: '#e84a5f',
-    w: 56, h: 66, run: 5.1, gAcc: 0.9, air: 4.0, aAcc: 0.45, jump: 13.4, dj: 11.8, grav: 0.72, fall: 11.5, ff: 16,
-    weight: 128, jumps: 2, power: 1.18, reach: 1.06, lag: 2, bars: [2, 5, 5, 2, 3] },
-  { id: 'brush', name: 'ハブラシ', type: 'リーチ・空中', desc: '日用品。長いリーチとふわっと3段ジャンプ', color: '#2ec4b6', alt: '#ff7eb6',
-    w: 38, h: 78, run: 5.8, gAcc: 1.05, air: 5.0, aAcc: 0.55, jump: 12.4, dj: 10.5, grav: 0.47, fall: 7.8, ff: 14.5,
-    weight: 80, jumps: 3, power: 0.93, reach: 1.19, lag: 0, endlag: 0.83, upB: 0.9, meterGain: 1.5, bars: [3, 3, 1, 4, 5] }
+  // moves: 共通の技データ(MOVES)をキャラごとに上書き → 発生・後スキ・判定の形・ふっとび方がキャラで大きく違う
+  { id: 'neko', name: 'ネコ', type: 'エアリアル', desc: '3段ジャンプと速い空中技。|とびかかりで相手を翻弄', color: '#ffb15c', alt: '#b8bfcc',
+    w: 44, h: 60, run: 6.8, gAcc: 1.3, air: 5.8, aAcc: 0.8, jump: 14.6, dj: 13.2, grav: 0.66, fall: 10.8, ff: 16.5,
+    weight: 84, jumps: 3, power: 1.0, reach: 1.0, lag: 0, endlag: 0.95, bars: [4, 3, 2, 5, 3],
+    moves: {
+      nair: { startup: 3, active: 6, rec: 7, land: 4, dmg: 5 },
+      uair: { startup: 4, rec: 7, land: 4 },
+      fair: { startup: 8, active: 6, rec: 14, land: 10, box: { x: 40, y: -30, w: 64, h: 40 }, dmg: 9, base: 6.4, gr: 0.12, ang: 40, airLunge: 6.5 },
+      dash: { startup: 6, active: 8, rec: 18, box: { x: 34, y: -26, w: 58, h: 36 }, dmg: 8, base: 6, gr: 0.09, ang: 55, lunge: 9, kind: 'light' },
+      fsmash: { startup: 14, dmg: 13, gr: 0.15, box: { x: 42, y: -36, w: 58, h: 34 } }
+    } },
+  { id: 'ninjin', name: 'ニンジン', type: 'ラッシュ', desc: 'いちばん速くて軽い。|連打とスライディングで攻める', color: '#ff7a1a', alt: '#ffd23d',
+    w: 40, h: 62, run: 9.0, gAcc: 1.9, air: 6.0, aAcc: 0.9, jump: 14.6, dj: 14.2, grav: 0.78, fall: 11.2, ff: 17,
+    weight: 85, jumps: 2, power: 0.95, reach: 0.9, lag: 0, endlag: 1.0, upB: 1.35, bars: [5, 2, 1, 3, 1],
+    moves: {
+      jab: { startup: 2, active: 2, rec: 4, dmg: 2, base: 3.6, gr: 0.02, ang: 45, box: { x: 28, y: -42, w: 38, h: 24 } },
+      utilt: { startup: 4, rec: 8, dmg: 5 },
+      dash: { startup: 6, active: 10, rec: 18, box: { x: 30, y: -14, w: 62, h: 26 }, dmg: 6, base: 5.6, gr: 0.04, ang: 76, lunge: 10.5, kind: 'light', slide: true },
+      fsmash: { startup: 11, active: 5, rec: 20, box: { x: 40, y: -38, w: 54, h: 32 }, dmg: 11, base: 7.6, gr: 0.135, lunge: 5 },
+      usmash: { startup: 10, dmg: 11, gr: 0.13 },
+      nair: { startup: 3, dmg: 5 },
+      fair: { startup: 8, rec: 13, land: 8, dmg: 9, gr: 0.11 }
+    } },
+  { id: 'mug', name: 'マグカップ', type: 'パワー', desc: '重くて遅いが一撃が重い。|スマッシュはアーマー付き', color: '#4a90e2', alt: '#e84a5f',
+    w: 58, h: 68, run: 4.4, gAcc: 0.75, air: 3.7, aAcc: 0.4, jump: 12.8, dj: 11.2, grav: 0.82, fall: 13, ff: 18.5,
+    weight: 130, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 0.95, throw: { dmg: 11, base: 8.2, gr: 0.13, ang: 40 }, bars: [1, 5, 5, 1, 2],
+    moves: {
+      jab: { startup: 5, active: 3, rec: 10, dmg: 5, base: 5.4, gr: 0.04, box: { x: 34, y: -44, w: 42, h: 28 } },
+      utilt: { startup: 7, dmg: 9, base: 7, box: { x: 4, y: -116, w: 76, h: 64 } },
+      fsmash: { startup: 24, active: 5, rec: 34, box: { x: 56, y: -40, w: 86, h: 46 }, dmg: 18, base: 9, gr: 0.17, ang: 36, lunge: 4, armor: [3, 22], armorMax: 12 },
+      usmash: { startup: 17, active: 6, rec: 32, box: { x: 0, y: -98, w: 104, h: 62 }, dmg: 16, base: 8.8, gr: 0.17, armor: [5, 16], armorMax: 10 },
+      nair: { startup: 6, dmg: 8, base: 6 },
+      uair: { startup: 7, dmg: 9 },
+      fair: { startup: 14, active: 5, rec: 20, land: 14, box: { x: 44, y: -34, w: 66, h: 52 }, dmg: 15, base: 7.4, gr: 0.15 },
+      grab: { startup: 7, box: { x: 36, y: -38, w: 46, h: 36 } }
+    } },
+  { id: 'brush', name: 'ハブラシ', type: 'リーチ', desc: '細長いブラシで間合いを制す。|先っぽを当てると強い', color: '#2ec4b6', alt: '#ff7eb6',
+    w: 36, h: 70, run: 6.5, gAcc: 1.1, air: 5.2, aAcc: 0.55, jump: 13.2, dj: 11.6, grav: 0.56, fall: 9.2, ff: 14.5,
+    weight: 104, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 1.0, meterGain: 1.3, bars: [2, 3, 3, 2, 5],
+    moves: {
+      jab: { startup: 6, active: 3, rec: 15, box: { x: 64, y: -50, w: 60, h: 16 }, dmg: 3.6, base: 3.8, gr: 0.03, ang: 30, tip: true },
+      utilt: { startup: 7, box: { x: 12, y: -104, w: 38, h: 72 }, dmg: 6 },
+      fsmash: { startup: 21, active: 4, rec: 30, box: { x: 96, y: -46, w: 104, h: 20 }, dmg: 12, base: 7.8, gr: 0.135, ang: 34, tip: true, lunge: 2 },
+      usmash: { startup: 15, box: { x: 0, y: -124, w: 40, h: 92 }, dmg: 13, base: 8, gr: 0.15 },
+      nair: { startup: 6, box: { x: 0, y: -40, w: 110, h: 36 }, dmg: 6 },
+      fair: { startup: 10, active: 4, rec: 16, land: 10, box: { x: 72, y: -40, w: 92, h: 20 }, dmg: 10, base: 6.4, gr: 0.12, tip: true },
+      uair: { box: { x: 0, y: -112, w: 32, h: 72 } }
+    } },
+  { id: 'edamame', name: 'エダマメ', type: 'シューター', desc: '豆を撃って近づかせない。|ためると大きな豆!', color: '#86c94a', alt: '#d9b44a',
+    w: 42, h: 58, run: 6.1, gAcc: 1.0, fric: 0.42, air: 4.6, aAcc: 0.5, jump: 13.6, dj: 12.8, grav: 0.55, fall: 9.6, ff: 14,
+    weight: 102, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 1.35, shooter: true, throw: { dmg: 7, base: 6.8, gr: 0.11, ang: 42 }, bars: [3, 2, 2, 3, 5],
+    moves: {
+      jab: { startup: 3, active: 3, rec: 8, dmg: 3, base: 6.4, gr: 0.05, ang: 32, box: { x: 28, y: -36, w: 36, h: 22 } },
+      utilt: { startup: 5, dmg: 6 },
+      // 地上の強攻撃ボタン = まめ鉄砲(押す長さでため)。空中前の強攻撃 = 空中まめ撃ち
+      fsmash: { startup: 5, active: 1, rec: 12, box: { x: 30, y: -32, w: 40, h: 30 }, kind: 'special', shot: true },
+      usmash: { startup: 11, dmg: 13, base: 8.6, gr: 0.16, box: { x: 0, y: -96, w: 60, h: 54 } },
+      nair: { startup: 4, dmg: 6, base: 5.8 },
+      uair: { dmg: 6 },
+      fair: { startup: 7, active: 1, rec: 16, land: 8, box: { x: 30, y: -32, w: 40, h: 30 }, kind: 'special', shot: true },
+      grab: { startup: 7, rec: 22, box: { x: 30, y: -34, w: 38, h: 30 } }
+    } }
 ];
 const P_COLORS = ['#ff4d5e', '#4da3ff'];
 
@@ -373,7 +428,17 @@ const SUPERS = {
     boxAt(f, at) { const cx = f.supX + f.facing * (50 + at * 20), cy = f.supY - 55; return { x: cx - 55, y: cy - 65, w: 110, h: 130, cx, cy }; } }
 };
 for (const id in SUPERS) { const m = SUPERS[id]; m.kind = 'super'; m.super = true; MOVES['super_' + id] = m; for (const h of [m.small, m.fin]) if (h) { h.noMeter = true; h.isSuper = true; h.kind = h.kind || 'super'; } }
+SUPERS.edamame = { name: 'まめまめガトリング', startup: 26, active: 44, rec: 34, multi: 999, finFrom: 999, sfx: 'gatling', gatling: true, box: { x: 300, y: -32, w: 600, h: 40 }, small: null, fin: null, boxAt() { return null; } };
+SUPERS.edamame.kind = 'super'; SUPERS.edamame.super = true; MOVES.super_edamame = SUPERS.edamame;
 for (const k in MOVES) MOVES[k].id = k;
+for (const c of CHARS) {
+  c.mv = {};
+  for (const k in MOVES) { const o = c.moves && c.moves[k]; c.mv[k] = o ? Object.assign({}, MOVES[k], o, { id: k }) : MOVES[k]; }
+  if (c.moves) for (const k in c.moves) if (!c.mv[k]) c.mv[k] = Object.assign({ kind: 'light' }, c.moves[k], { id: k });
+}
+// ===== エダマメの豆(飛び道具) =====
+const CHG_MAX = 45, CHG_BIG = 15;
+function beanStats(lv) { const k = clamp(lv / CHG_MAX, 0, 1); return { r: 9 + 15 * k, sp: 14 - 4 * k, dmg: 5.4 + 12.6 * k, base: 5.2 + 5.4 * k, gr: 0.03 + 0.16 * k, ang: 30 + 8 * k, life: 62 + 30 * k, kind: k > 0.6 ? 'strong' : 'light', big: lv >= CHG_BIG }; }
 const THROW = { dmg: 9, base: 7.2, gr: 0.115, ang: 42 };
 const BUF = 6, JUMPSQUAT = 3, SHIELD_MAX = 50, KB_DECAY = 0.42;
 
@@ -409,7 +474,7 @@ function makeFighter(pi, ci, alt) {
     grounded: true, onSoft: false, jumps: c.jumps, canUpB: true, canDodge: true, ff: false, dropT: 0,
     percent: 0, stocks: game.stocks, shieldHP: SHIELD_MAX, invuln: 0, stunLen: 0, landLen: 0, rollDir: 0,
     bA: 0, bS: 0, bG: 0, bJ: 0, bD: 0, bL: 0, bR: 0, bX: 0, meter: 0, supX: 0, supY: 0, trail: [], pctShake: 0, flash: 0, holdT: 0,
-    stats: { dealt: 0, kos: 0, maxPct: 0, supers: 0, superHits: 0, superBlocked: 0 }, anim: 0
+    stats: { dealt: 0, kos: 0, maxPct: 0, supers: 0, superHits: 0, superBlocked: 0, shots: 0, shotHits: 0, armorHits: 0, tips: 0 }, anim: 0, charge: 0, chg: 0, shotLv: 0
   };
 }
 function startMatch() {
@@ -417,6 +482,7 @@ function startMatch() {
   game.fighters = [makeFighter(0, s[0].ci, false), makeFighter(1, s[1].ci, s[0].ci === s[1].ci)];
   game.hitstop = 0; game.shake = 0; game.superFx = null; game.countdown = 150; game.goTimer = 0; game.endTimer = -1; game.winner = -1;
   game.paused = false; particles.length = 0;
+  game.projs = []; game.projHist = [];
   game.ais = game.ctrl.map((lv, i) => lv > 0 ? new CpuAI(i, lv) : null); game.hist = [[], []]; game.matchT = 0; game.kos = [];
   cam.x = 640; cam.y = 380; cam.z = 1;
   setScene('match');
@@ -436,10 +502,17 @@ function recOf(f, m) { return Math.max(4, Math.round(m.rec * (f.st.endlag || 1))
 function startupOf(f, m) { return Math.max(2, m.startup + (m.kind === 'strong' ? f.st.lag : 0)); }
 function activeHitbox(f) {
   const m = f.move;
-  if (!m || f.state !== 'attack') return null;
+  if (!m || f.state !== 'attack' || m.shot) return null;
   const su = startupOf(f, m);
   if (f.t < su || f.t >= su + m.active) return null;
   return m.super ? m.boxAt(f, f.t - su) : boxOf(f, m);
+}
+// ハブラシの「先端」技は、振りかぶり中からブラシの毛で小さな豆をはらい落とせる
+function sweepBox(f) {
+  const m = f.move;
+  if (!m || f.state !== 'attack' || !m.tip || m.super) return null;
+  if (f.t >= startupOf(f, m) + m.active) return null;
+  return boxOf(f, m);
 }
 function superReady(f) { return f.meter >= SUPER_MAX; }
 function trySuper(f, inp) {
@@ -458,7 +531,7 @@ function doSuper(f, inp) {
   sfx('super'); burst(f.x, f.y - f.h / 2, 26, '#ffd23d', 9);
 }
 function startMove(f, id, inp) {
-  const m = MOVES[id];
+  const m = f.c.mv[id] || MOVES[id];
   if (inp && !m.rel) { const d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0); if (d && f.grounded) f.facing = d; }
   f.state = 'attack'; f.move = m; f.t = 0; f.hitIds.clear(); f.atkSeq = (f.atkSeq || 0) + 1;
   if (id === 'recover') {
@@ -491,7 +564,7 @@ function groundMove(f, inp) {
     f.vx += clamp(target - f.vx, -st.gAcc, st.gAcc);
     f.state = 'run';
   } else {
-    const fr = 1.1; f.vx = Math.abs(f.vx) <= fr ? 0 : f.vx - Math.sign(f.vx) * fr;
+    const fr = st.fric || 1.1; f.vx = Math.abs(f.vx) <= fr ? 0 : f.vx - Math.sign(f.vx) * fr;
     f.state = 'idle';
   }
 }
@@ -500,8 +573,8 @@ function tryGroundActions(f, inp) {
   if (trySuper(f, inp)) return true;
   if (f.bA && inp.g) { f.bA = 0; startMove(f, 'grab', inp); sfx('swing'); return true; }
   if (f.bJ) { toJumpsquat(f); return true; }
-  if (f.bS) { f.bS = 0; startMove(f, inp.u ? 'usmash' : 'fsmash', inp); return true; }
-  if (f.bA) { f.bA = 0; startMove(f, inp.u ? 'utilt' : 'jab', inp); sfx('swing'); return true; }
+  if (f.bS) { f.bS = 0; if (f.st.shooter && !inp.u) { startShot(f, inp); return true; } startMove(f, inp.u ? 'usmash' : 'fsmash', inp); return true; }
+  if (f.bA) { f.bA = 0; const dash = f.c.mv.dash && f.state === 'run' && !inp.u && Math.abs(f.vx) > f.st.run * 0.6; startMove(f, dash ? 'dash' : inp.u ? 'utilt' : 'jab', inp); sfx('swing'); return true; }
   if (inp.g) { f.state = 'shield'; f.t = 0; f.bG = 0; f.vx *= 0.3; return true; }
   if (f.bD && f.onSoft) { f.bD = 0; f.dropT = 14; f.grounded = false; f.y += 3; f.state = 'air'; f.jumps = f.st.jumps - 1; return true; }
   return false;
@@ -515,7 +588,7 @@ function tryAirActions(f, inp) {
     f.vx = dx / n * 7.5; f.vy = dy / n * 7.5; f.kbx *= 0.2; f.kby *= 0.2;
     sfx('dodge'); return true;
   }
-  if (f.bS) { f.bS = 0; if (inp.u && f.canUpB) startMove(f, 'recover', inp); else if (!inp.u) startMove(f, 'fair', inp); else return false; return true; }
+  if (f.bS) { f.bS = 0; if (inp.u && f.canUpB) startMove(f, 'recover', inp); else if (!inp.u) { startMove(f, 'fair', inp); if (f.move.shot) { f.shotLv = f.charge; f.charge = 0; } } else return false; return true; }
   if (f.bA) { f.bA = 0; startMove(f, inp.u ? 'uair' : 'nair', inp); sfx('swing'); return true; }
   if (f.bJ && f.jumps > 0) {
     f.bJ = 0; f.jumps--; f.vy = -f.st.dj; f.ff = false; f.kbx *= 0.4; f.kby = 0;
@@ -537,7 +610,7 @@ function land(f) {
     case 'respawn': break;
   }
 }
-const NOSLIDE = new Set(['attack', 'landing', 'shield', 'shieldstun', 'shieldDrop', 'roll', 'spot', 'jumpsquat', 'holding']);
+const NOSLIDE = new Set(['attack', 'charge', 'landing', 'shield', 'shieldstun', 'shieldDrop', 'roll', 'spot', 'jumpsquat', 'holding']);
 function physics(f) {
   const px = f.x, py = f.y, wasGround = f.grounded;
   f.x += f.vx + f.kbx; f.y += f.vy + f.kby;
@@ -575,7 +648,7 @@ function physics(f) {
   if (wasGround && !f.grounded && f.state !== 'grabbed' && f.state !== 'respawn') {
     // 足場から歩いて落ちた
     if (f.jumps === f.st.jumps) f.jumps = f.st.jumps - 1;
-    if (['idle', 'run', 'landing', 'shield', 'shieldDrop', 'shieldstun', 'roll', 'spot', 'jumpsquat', 'holding'].includes(f.state)) { f.state = 'air'; f.t = 0; }
+    if (['idle', 'run', 'landing', 'charge', 'shield', 'shieldDrop', 'shieldstun', 'roll', 'spot', 'jumpsquat', 'holding'].includes(f.state)) { f.state = 'air'; f.t = 0; }
   }
 }
 function registerBuffers(f, inp) {
@@ -639,8 +712,10 @@ function updateFighter(f, inp, o) {
         if (at > 0 && ((at % m.multi === 0 && at < m.finFrom) || at === m.finFrom)) f.hitIds.clear();
         if (m.dash) { f.trail.push({ x: f.x, y: f.y }); if (f.trail.length > 8) f.trail.shift(); }
         if (at >= 0 && at % 3 === 0) superParticles(f, m, at);
-      } else if (f.grounded) { f.vx *= 0.8; if (m.lunge && f.t === su) f.vx = f.facing * m.lunge; }
-      else { airDrift(f, inp, m.id === 'recover' ? 0.55 : 1); if (inp.pd && f.vy > -3) f.ff = true; }
+      } else if (f.grounded) { f.vx *= m.slide ? 0.93 : 0.8; if (m.lunge && f.t === su) f.vx = f.facing * m.lunge; }
+      else { airDrift(f, inp, m.id === 'recover' ? 0.55 : 1); if (inp.pd && f.vy > -3) f.ff = true; if (m.airLunge && f.t === su) f.vx = f.facing * m.airLunge; }
+      if (m.shot && f.t === su) spawnBean(f, f.shotLv, null);
+      if (m.gatling && f.t >= su && f.t - su < m.active) { const at = f.t - su; if (at % 4 === 0 && at < 36) spawnBean(f, 0, 'small'); if (at === 38) spawnBean(f, 0, 'fin'); }
       if (!f.grounded && !(m.super && f.t < su + m.active)) gravity(f, m.id === 'recover' && f.t < su + 6 ? 0.25 : 1);
       if (m.kind === 'strong' && f.t === su) sfx('swing');
       if (f.t >= su + m.active + recOf(f, m)) {
@@ -651,6 +726,13 @@ function updateFighter(f, inp, o) {
       }
       break;
     }
+    case 'charge':
+      // まめ鉄砲のため: 押している間たまる。離すと発射、ガード/ジャンプでためを保存
+      f.vx *= 0.8; f.chg = Math.min(CHG_MAX, f.chg + 1);
+      if (f.chg === CHG_MAX && f.t === CHG_MAX) { sfx('full'); burst(f.x + f.facing * 26, f.y - 30, 10, '#d8ff8a', 4); }
+      if (f.bG || f.bJ || f.t > CHG_MAX + 40) { f.charge = Math.max(f.charge, f.chg); f.chg = 0; f.bG = 0; if (f.bJ) toJumpsquat(f); else { f.state = 'idle'; f.t = 0; } sfx('dodge'); break; }
+      if (!inp.s) fireShot(f, f.chg);
+      break;
     case 'landing':
       f.vx *= 0.75;
       if (f.t >= f.landLen) { f.state = 'idle'; f.t = 0; if (!tryGroundActions(f, inp)) groundMove(f, inp); }
@@ -706,7 +788,7 @@ function updateFighter(f, inp, o) {
       if (f.t >= 14 || (f.t >= 5 && (f.bA || f.bS))) {
         let dir = f.facing; if ((inp.l && f.facing > 0) || (inp.r && f.facing < 0)) dir = -f.facing;
         f.bA = f.bS = 0;
-        if (o.state === 'grabbed') { o.state = 'air'; o.grounded = false; applyDamage(f, o, THROW, dir, true); }
+        if (o.state === 'grabbed') { o.state = 'air'; o.grounded = false; applyDamage(f, o, f.st.throw || THROW, dir, true); }
         f.state = 'landing'; f.t = 0; f.landLen = 10;
       }
       break;
@@ -735,7 +817,7 @@ function applyDamage(a, b, m, dir, isThrow) {
   b.kbx = Math.cos(ang) * kb * dir; b.kby = -Math.sin(ang) * kb;
   if (b.grounded && b.kby > -2) b.kby = -2;
   b.grounded = false; b.y -= 1;
-  b.vx = 0; b.vy = 0; b.ff = false; b.move = null;
+  b.vx = 0; b.vy = 0; b.ff = false; b.move = null; b.chg = 0;
   b.state = 'hitstun'; b.t = 0; b.stunLen = Math.max(8, Math.floor(kb * 1.75));
   b.jumps = Math.max(b.jumps, 1); b.canUpB = true; b.canDodge = true;
   b.flash = 6; b.pctShake = 14; b.facing = -dir; b.lastHitT = game.matchT; b.lastSuper = !!m.isSuper;
@@ -775,25 +857,104 @@ function resolveHits() {
       b.state = 'grabbed'; b.t = 0; b.move = null; a.state = 'holding'; a.t = 0; a.move = null;
       b.vx = b.vy = b.kbx = b.kby = 0; sfx('grab'); game.hitstop = 4; continue;
     }
-    if (b.state === 'shield' || b.state === 'shieldstun') {
-      const dmg = m.dmg * a.st.power * (m.shieldMul || 1);
-      b.shieldHP -= dmg * 1.25;
-      const d = Math.sign(b.x - a.x) || a.facing;
-      b.vx = d * (2 + dmg * 0.28);
-      if (a.grounded) a.vx = -d * (1 + dmg * 0.12);
-      game.hitstop = Math.min(10, Math.floor(3 + dmg * 0.25));
-      sfx('shield'); hitSpark((a.x + b.x) / 2, b.y - b.h / 2, 0.6, '#9fe8ff');
-      if (m.isSuper && !a.supHit) { a.supHit = 2; a.stats.superBlocked++; }
-      if (b.shieldHP <= 0) shieldBreak(b);
-      else { b.state = 'shieldstun'; b.t = 0; b.stunLen = Math.floor(dmg * 0.6) + 3; }
-      continue;
+    if (b.state === 'shield' || b.state === 'shieldstun') { shieldHit(a, b, m, a.x, true); continue; }
+    if (m.tip) {
+      // ハブラシ: 判定の先っぽ側だけに当たったら「先端」(強い)
+      const near = Math.abs(hb.cx - a.x) - hb.w / 2, bNear = Math.abs(b.x - a.x) - b.w * 0.3;
+      if (bNear >= near + hb.w * 0.45) { m = Object.assign({}, m, { dmg: m.dmg * 1.3, base: m.base * 1.12 }); a.stats.tips++; particles.push({ x: b.x, y: b.y - b.h - 18, vx: 0, vy: -1, life: 26, max: 26, size: 16, color: '#c9fbe9', type: 'text', text: '先端!' }); }
     }
+    if (armorHit(a, b, m)) continue;
     const dir = m.rel ? (Math.sign(b.x - a.x) || a.facing) : a.facing;
     applyDamage(a, b, m, dir, false);
     if (m.isSuper && a.supHit !== 1) { if (a.supHit === 2) a.stats.superBlocked--; a.supHit = 1; a.stats.superHits++; }
     if (m.carry) { m.carry(a, b, dir); b.stunLen = Math.max(b.stunLen, 12); }
     if (m.isSuper && m === m0.fin) { game.hitstop = Math.max(game.hitstop, 14); game.shake = Math.max(game.shake, 16); burst(b.x, b.y - b.h / 2, 30, '#ffd23d', 12); }
   }
+}
+function shieldHit(a, b, m, srcX, melee) {
+  const dmg = m.dmg * a.st.power * (m.shieldMul || 1);
+  b.shieldHP -= dmg * 1.25;
+  const d = Math.sign(b.x - srcX) || a.facing;
+  b.vx = d * (2 + dmg * 0.28);
+  if (melee && a.grounded) a.vx = -d * (1 + dmg * 0.12);
+  game.hitstop = Math.max(game.hitstop, Math.min(10, Math.floor(3 + dmg * 0.25)));
+  sfx('shield'); hitSpark((srcX + b.x) / 2, b.y - b.h / 2, 0.6, '#9fe8ff');
+  if (m.isSuper && !a.supHit) { a.supHit = 2; a.stats.superBlocked++; }
+  if (b.shieldHP <= 0) shieldBreak(b);
+  else { b.state = 'shieldstun'; b.t = 0; b.stunLen = Math.floor(dmg * 0.6) + 3; }
+}
+// マグカップのスマッシュ: ため中は「アーマー」(ダメージは受けるが怯まない)。必殺技・つかみ・強すぎる攻撃には負ける
+function armorOn(b) { const m = b.move; return b.state === 'attack' && m && m.armor && b.t >= m.armor[0] && b.t <= m.armor[1]; }
+function armorHit(a, b, m) {
+  if (!armorOn(b) || m.isSuper || m.vx !== undefined || m.dmg * a.st.power > b.move.armorMax) return false;
+  const dmg = Math.round(m.dmg * a.st.power);
+  b.percent = Math.min(999, b.percent + dmg); a.stats.dealt += dmg; b.stats.armorHits++;
+  if (!m.noMeter) { a.meter = Math.min(SUPER_MAX, a.meter + dmg * SUPER_GAIN_DEAL * (a.st.meterGain || 1)); b.meter = Math.min(SUPER_MAX, b.meter + dmg * SUPER_GAIN_TAKE * (b.st.meterGain || 1)); }
+  b.flash = 4; b.pctShake = 8; game.hitstop = Math.max(game.hitstop, 5); game.shake = Math.max(game.shake, 4);
+  sfx('armor'); hitSpark(b.x, b.y - b.h / 2, 0.8, '#ffb347');
+  particles.push({ x: b.x, y: b.y - b.h - 22, vx: 0, vy: -1, life: 30, max: 30, size: 18, color: '#ffb347', type: 'text', text: 'アーマー!' });
+  return true;
+}
+// ---- エダマメの豆 ----
+function startShot(f, inp) {
+  const d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0); if (d) f.facing = d;
+  if (f.charge > 0) { fireShot(f, f.charge, true); return; }
+  f.state = 'charge'; f.t = 0; f.chg = 0;
+}
+function myBeans(f) { let small = 0, big = 0; for (const p of game.projs) if (p.pi === f.pi && !p.isSuper) { if (p.big) big++; else small++; } return { small, big }; }
+function fireShot(f, lv, stored) {
+  const n = myBeans(f), st = beanStats(lv);
+  if (stored) f.charge = 0;
+  if ((st.big && n.big > 0) || (!st.big && n.small >= 1)) {
+    // 画面に出せる豆は 小2つ・大1つまで。出せない時はためを保存して終わり
+    if (lv >= 8) f.charge = Math.max(f.charge, lv);
+    f.state = 'idle'; f.t = 0; f.chg = 0; puff(f.x + f.facing * 24, f.y - 30, 4, '#d8ff8a'); return;
+  }
+  f.chg = 0; startMove(f, 'fsmash'); f.shotLv = lv;
+}
+function spawnBean(f, lv, sup) {
+  const hs = f.h / 58, x = f.x + f.facing * (f.w / 2 + 6), y = f.y - 30 * hs;
+  let p;
+  if (sup === 'small') p = { r: 10, sp: 13, dmg: 1, base: 3, gr: 0, ang: 14, life: 60, kind: 'super', big: false, isSuper: true, noMeter: true, shieldMul: 0.7, carry: true, dy: rnd(-10, 10) };
+  else if (sup === 'fin') p = { r: 30, sp: 12, dmg: 8, base: 6.8, gr: 0.14, ang: 38, life: 70, kind: 'strong', big: true, isSuper: true, noMeter: true, fin: true, dy: 0 };
+  else { const b = beanStats(lv); p = Object.assign(b, { dy: 0 }); f.stats.shots++; }
+  Object.assign(p, { air: !f.grounded, pi: f.pi, x, y: y + p.dy, vx: f.facing * p.sp, lv: sup ? (sup === 'fin' ? 99 : 0) : lv, t: 0, id: (game.projSeq = (game.projSeq || 0) + 1) });
+  game.projs.push(p);
+  sfx(sup ? 'pew' : p.big ? 'bigshot' : 'pew');
+  if (p.big) burst(x, p.y, 8, '#d8ff8a', 5);
+}
+function projBox(p) { return { x: p.x - p.r, y: p.y - p.r * 0.8, w: p.r * 2, h: p.r * 1.6, cx: p.x, cy: p.y }; }
+function updateProjs() {
+  const fs = game.fighters, ps = game.projs;
+  for (const p of ps) { p.x += p.vx; p.t++; if (p.t > p.life || p.x < BLAST.x1 || p.x > BLAST.x2) p.dead = true; }
+  // 豆どうし: 大きい方が残る(差が小さければ両方消える)
+  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+    const a = ps[i], b = ps[j];
+    if (a.dead || b.dead || a.pi === b.pi || Math.abs(a.x - b.x) > a.r + b.r || Math.abs(a.y - b.y) > a.r + b.r) continue;
+    if (a.lv - b.lv >= 20) b.dead = true; else if (b.lv - a.lv >= 20) a.dead = true; else a.dead = b.dead = true;
+    puff((a.x + b.x) / 2, a.y, 6, '#d8ff8a');
+  }
+  for (const p of ps) {
+    if (p.dead) continue;
+    const a = fs[p.pi], b = fs[1 - p.pi], box = projBox(p);
+    // 相手の攻撃で打ち消せる(大きな豆は弱攻撃では消えない / 必殺技の豆は消えない)
+    const hb = activeHitbox(b) || (!p.big ? sweepBox(b) : null);
+    if (hb && !p.isSuper && overlap(hb, box) && !(p.big && p.lv >= CHG_MAX * 0.66 && b.move.kind === 'light' && !b.move.tip)) { p.dead = true; b.stats.clash = (b.stats.clash || 0) + 1; if (b.move.kind === 'light') b.vx *= 0.15; hitSpark(p.x, p.y, 0.5, '#d8ff8a'); sfx('hit'); continue; }
+    if (isIntangible(b) || !overlap(box, hurtOf(b))) continue;
+    p.dead = true;
+    const m = p, dir = Math.sign(p.vx) || a.facing;
+    if (b.state === 'shield' || b.state === 'shieldstun') { shieldHit(a, b, m, p.x - p.vx * 3, false); continue; }
+    if (armorHit(a, b, m)) continue;
+    applyDamage(a, b, m, dir, false);
+    if (!p.isSuper) a.stats.shotHits++;
+    if (m.isSuper && a.supHit !== 1) { if (a.supHit === 2) a.stats.superBlocked--; a.supHit = 1; a.stats.superHits++; }
+    if (m.carry) { b.kbx = dir * 2.6; b.kby = -1.2; b.stunLen = Math.max(b.stunLen, 14); }
+    if (m.fin) { game.hitstop = Math.max(game.hitstop, 14); game.shake = Math.max(game.shake, 16); burst(b.x, b.y - b.h / 2, 30, '#ffd23d', 12); }
+    burst(p.x, p.y, p.big ? 12 : 5, '#c8f08a', 4);
+  }
+  game.projs = ps.filter(p => !p.dead);
+  game.projHist.push(game.projs.map(p => ({ id: p.id, pi: p.pi, x: p.x, y: p.y, vx: p.vx, r: p.r, big: p.big, isSuper: !!p.isSuper })));
+  if (game.projHist.length > 40) game.projHist.shift();
 }
 function checkBlast(f, o) {
   if (f.state === 'dead' || f.state === 'respawn') return;
@@ -867,7 +1028,15 @@ function snapshot(f) {
     facing: f.facing, w: f.w, h: f.h, mid: m ? m.id : null, kind: m ? m.kind : null, su: m ? startupOf(f, m) : 0,
     active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps, ll: f.landLen || 0 };
 }
-function reachOf(f, id, oppHalfW) { const m = MOVES[id], r = f.st.reach; return (Math.abs(m.box.x) + m.box.w / 2) * r + oppHalfW * 0.85; }
+// キャラごとの戦い方(全レベル共通。うまさ=反応・精度はレベルのパラメータで決まる)
+const AI_STYLE = {
+  neko:    { air: 1.7, jab: 0.9, smash: 0.9, grab: 1.0, aggro: 0.04, hop: 1.8, pounce: 0.55 },
+  ninjin:  { air: 0.8, jab: 1.6, smash: 0.8, grab: 1.1, aggro: 0.12, hop: 0.8, dashIn: 0.5 },
+  mug:     { air: 0.45, jab: 0.7, smash: 1.7, grab: 1.3, aggro: -0.04, hop: 0.4, armor: 0.55 },
+  brush:   { air: 0.5, jab: 1.3, smash: 1.1, grab: 0.8, aggro: 0, hop: 0.5, tipSpace: 0.6 },
+  edamame: { air: 0.6, jab: 1.1, smash: 1.0, grab: 1.0, aggro: -0.1, hop: 0.6, zoner: true }
+};
+function reachOf(f, id, oppHalfW) { const m = f.c.mv[id] || MOVES[id], r = f.st.reach; return (Math.abs(m.box.x) + m.box.w / 2) * r + oppHalfW * 0.85; }
 class CpuAI {
   constructor(pi, lv) {
     this.pi = pi; this.lv = lv; this.P = CPU_LV[lv];
@@ -878,7 +1047,7 @@ class CpuAI {
     this.habit = { jab: rnd(0.8, 1.3), smash: rnd(0.6, 1.1), grab: rnd(0.5, 1.0), shield: rnd(0.5, 1.0), wait: rnd(0.5, 1.0), air: rnd(0.4, 0.9) };
     this.seen = { shield: 1, attack: 1, grab: 1 }; this.lastSeq = 0; this.airSeen = 1; this.calmT = 0; this.pctSum = 0; this.advKey = null; this.aaUntil = 0; this.airPain = 0; this.prevSt = 'idle';
     // 上級者はキャラの長所を活かす: ハブラシはふわふわで対空に弱いので地上でリーチを活かす
-    const me = game.fighters[pi]; this.airK = this.P.footsie && me && me.c.id === 'brush' ? 1 - this.P.footsie * 0.9 : 1; this.prevPct = 0; this.ssUntil = 0;
+    const me = game.fighters[pi]; this.S = AI_STYLE[me ? me.c.id : 'neko'] || AI_STYLE.neko; this.airK = this.S.air; this.ag = clamp(this.P.aggro + this.S.aggro, 0.2, 0.9); this.projSeen = {}; this.armorSeq = -1; this.prevPct = 0; this.ssUntil = 0;
     this.reactSeq = -1; this.punishSeq = -1; this.respawnWait = ri(15, 60); this.busyUntil = 0; this.moveDir = 0; this.edgeMargin = rnd(-10, 25) + (lv - 3) * 6;
   }
   sampleDelay() { const [m, sd] = this.P.react; return Math.max(this.P.minReact || 9, Math.round(m + gauss() * sd)); }
@@ -942,10 +1111,58 @@ class CpuAI {
     if (this.hold.l >= HOLD && f.x < STAGE.x1 + 26) this.hold.l = 0;
     if (this.hold.r >= HOLD && f.x > STAGE.x2 - 26) this.hold.r = 0;
   }
+  // 飛んでくる豆: 見えた位置(反応時間ぶん前)から到達を見積もってガード/ジャンプで越える/空中回避
+  // 飛んでくる豆が n フレーム以内に届くか(反応時間ぶん前の景色で判断)
+  beanSoon(f, n) {
+    const ph = game.projHist; if (!ph || !ph.length) return false;
+    const snap = ph[Math.max(0, ph.length - 1 - this.delay)];
+    for (const p of snap) {
+      if (p.pi === this.pi) continue;
+      const dir = Math.sign(p.vx), rel = (f.x - p.x) * dir; if (rel < -f.w / 2) continue;
+      if (Math.abs(p.y - (f.y - f.h / 2)) > f.h / 2 + p.r) continue;
+      if (rel - Math.abs(p.vx) * this.delay - f.w / 2 - p.r < Math.abs(p.vx) * n) return true;
+    }
+    return false;
+  }
+  projDefense(f, canAct) {
+    const ph = game.projHist; if (!ph || !ph.length) return false;
+    const snap = ph[Math.max(0, ph.length - 1 - this.delay)];
+    for (const p of snap) {
+      if (p.pi === this.pi || this.projSeen[p.id]) continue;
+      const dir = Math.sign(p.vx), rel = (f.x - p.x) * dir; if (rel < 0) continue;
+      const realD = rel - Math.abs(p.vx) * this.delay - f.w / 2 - p.r;
+      if (Math.abs(p.y - (f.y - f.h / 2)) > f.h / 2 + p.r || realD > 210 || realD < 6) continue;
+      this.projSeen[p.id] = 1;
+      if (Math.random() > Math.min(0.97, this.P.guard * 0.9 + 0.1)) return false;
+      const tArr = realD / Math.abs(p.vx);
+      if (f.grounded && canAct) {
+        this.releaseAll();
+        // ハブラシ: ブラシの先で豆をはらい落とす(タイミングを合わせて弱攻撃)
+        if (this.S.tipSpace && f.facing === -dir && Math.random() < this.S.tipSpace * (0.5 + 0.5 * this.P.read)) {
+          const m = f.c.mv.jab, reachX = m.box.x + m.box.w / 2 + p.r, relNow = rel - Math.abs(p.vx) * this.delay;
+          const wait = Math.round((relNow - reachX) / Math.abs(p.vx)) - startupOf(f, m) + ri(-1, 2);
+          if (wait >= -8 && wait < 30) { const w0 = Math.max(0, wait); this.tap('a', 4, w0); this.busy(w0 + 14); return true; }
+        }
+        if (Math.random() < (p.big ? 0.6 : 0.4) && tArr > 5 && f.state !== 'shield') { this.tap('u', ri(8, 11), 0); this.setMove(-dir); this.busy(22); }
+        else { this.hold.g = 0; this.tap('g', ri(12, 20), 0); this.busy(14); }
+        return true;
+      }
+      if (!f.grounded && f.state === 'air' && f.canDodge && tArr < 8) { this.releaseAll(); this.tap('g', 4, 0); this.busy(16); return true; }
+      return false;
+    }
+    return false;
+  }
   react(f, v) {
     // 相手の強攻撃の「ため」を見てからガード(見えるのは反応時間ぶん前の姿)
     const dx = v.x - f.x, adx = Math.abs(dx);
     const canAct = f.grounded && (f.state === 'idle' || f.state === 'run' || f.state === 'shield' || f.state === 'landing');
+    if (this.now % 300 === 0) this.projSeen = {};
+    if (game.projs && game.projs.length && this.projDefense(f, canAct)) return;
+    // マグカップ: 相手の弱い攻撃が来るのを見たら、アーマー付きスマッシュで押し切る
+    if (this.S.armor && canAct && f.state !== 'shield' && v.state === 'attack' && v.t < v.su && v.kind === 'light' && v.seq !== this.armorSeq && adx < reachOf(f, 'fsmash', v.w / 2) + 10 && Math.abs(v.y - f.y) < 50) {
+      this.armorSeq = v.seq;
+      if (Math.random() < this.S.armor * (0.3 + 0.6 * this.P.punish)) { this.go(f, dx > 0 ? 1 : -1, 0, 'fsmash'); this.busy(40); return; }
+    }
     if (v.state === 'attack' && v.kind === 'strong' && v.t < v.su && v.seq !== this.reactSeq) {
       this.reactSeq = v.seq;
       const danger = adx < 150 && Math.abs(v.y - f.y) < 90;
@@ -961,10 +1178,10 @@ class CpuAI {
     if (v.state === 'attack' && v.kind === 'super' && v.t < v.su && v.seq !== this.superReactSeq) {
       this.superReactSeq = v.seq;
       const id = v.mid.slice(6), front = (f.x - v.x) * v.facing > -24, ady = Math.abs(v.y - f.y);
-      const danger = id === 'neko' ? front && adx < 400 && ady < 70 : id === 'ninjin' ? front && ady < 80 : id === 'mug' ? adx < 180 && ady < 160 : front && adx < 620 && ady < 80;
+      const danger = id === 'neko' ? front && adx < 400 && ady < 70 : id === 'ninjin' || id === 'edamame' ? front && ady < 80 : id === 'mug' ? adx < 180 && ady < 160 : front && adx < 620 && ady < 80;
       if (danger && Math.random() < Math.min(0.95, this.P.guard * 1.1)) {
         this.releaseAll(); const r = Math.random() * (1 - (this.P.smartSuper || 0) * 0.8), away = dx > 0 ? -1 : 1;
-        const horiz = id === 'ninjin' || id === 'brush';
+        const horiz = id === 'ninjin' || id === 'brush' || id === 'edamame';
         if (!f.grounded) { if (f.jumps > 0 && horiz) this.tap('u', 6, 0); }
         else if (horiz && r < 0.5) { this.tap('u', ri(10, 14), ri(0, 2)); this.tap('u', 6, ri(16, 20)); }
         else if (id === 'mug' && r < 0.55) this.setMove(away);
@@ -1015,7 +1232,7 @@ class CpuAI {
       if (real >= 3 && Math.random() < (inShield ? P.oos : big ? P.punish : P.whiff)) {
         const rn = f.st.run * 0.85, tr = r => Math.max(0, adx - r + 4) / rn + (adx > r ? 2 : 0);
         const jabR = reachOf(f, 'jab', v.w / 2), grabR = reachOf(f, 'grab', v.w / 2), smR = reachOf(f, 'fsmash', v.w / 2);
-        const su = id => startupOf(f, MOVES[id]), kill = v.percent > 85 + (v.w > 50 ? 15 : 0);
+        const su = id => startupOf(f, f.c.mv[id]), kill = v.percent > 85 + (v.w > 50 ? 15 : 0);
         let act = null, t = 0;
         if (inShield) { if (adx < grabR + 6 && real >= su('grab') + 1) act = 'oos'; }
         else if (kill && real >= su('fsmash') + tr(smR)) { act = 'fsmash'; t = tr(smR); }
@@ -1085,7 +1302,7 @@ class CpuAI {
     if (this.superHoldUntil == null) this.superHoldUntil = this.now + (Math.random() < 0.35 * (1 - (P.smartSuper || 0) * 0.6) ? ri(60, 420) : ri(0, 30));
     if (this.now < this.superHoldUntil) return false;
     const id = f.c.id, ady = Math.abs(dy);
-    const inRange = id === 'neko' ? adx < 300 && ady < 40 : id === 'ninjin' ? adx < 590 && ady < 45 : id === 'mug' ? adx < 120 && ady < 110 : adx < 540 && ady < 50 && v.grounded;
+    const inRange = id === 'neko' ? adx < 300 && ady < 40 : id === 'ninjin' ? adx < 590 && ady < 45 : id === 'mug' ? adx < 120 && ady < 110 : id === 'edamame' ? adx < 620 && ady < 40 : adx < 540 && ady < 50 && v.grounded;
     const bad = ['shield', 'roll', 'spot', 'airdodge', 'dead', 'respawn'].includes(v.state);
     const opening = ['landing', 'hitstun', 'stunned', 'helpless'].includes(v.state) || (v.state === 'attack' && v.t >= v.su);
     const sm = P.smartSuper || 0, waste = Math.random() < P.mistake * 0.12 * (1 - sm);
@@ -1113,6 +1330,37 @@ class CpuAI {
     if (py < STAGE.y - 70) { this.tap('u', 4, 8); this.tap('a', 5, 10); } else this.tap('s', 5, ri(7, 9));
     this.busy(16); return true;
   }
+  // エダマメ: 距離を取って豆を撃つ/ためる。ためた大豆は「当たる時」に撃つ
+  zoner(f, v, d, adx, dy) {
+    const P = this.P, aligned = Math.abs(dy) < 48;
+    if (!f.grounded) return false;
+    // 近い: 後ろへ跳んで空中まめ撃ち(向きはそのまま)で離れる
+    if (adx < 170) {
+      // 走って突っ込んでくる相手には、置き豆(発生の早い小豆)で止める
+      if (v.state === 'run' && Math.sign(v.vx) === -d && adx > 50 && Math.abs(dy) < 40 && myBeans(f).small < 1 && Math.random() < 0.25 + 0.45 * P.read) {
+        this.hold.g = 0; this.setMove(0); if (f.facing !== d) this.tap(this.dk(d), 2, 0); this.tap('s', 3, 1); this.busy(ri(12, 16)); return true;
+      }
+      if (adx > 50 && Math.abs(dy) < 50 && v.state !== 'attack' && Math.random() < 0.18 + 0.2 * P.read) {
+        const roomB = d > 0 ? f.x - STAGE.x1 : STAGE.x2 - f.x; if (roomB < 120) return false;
+        this.hold.g = 0; this.setMove(0); if (f.facing !== d) this.tap(this.dk(d), 2, 0);
+        this.tap('u', 3, 1); this.tap(this.dk(-d), 14, 5); this.tap('s', 4, ri(8, 12)); this.busy(ri(26, 32)); return true;
+      }
+      return false;
+    }
+    const own = myBeans(f), roomBack = d > 0 ? f.x - STAGE.x1 : STAGE.x2 - f.x;
+    const busyOpp = ['shield', 'roll', 'spot', 'airdodge'].includes(v.state);
+    if (adx < 250 && roomBack > 100 && Math.random() < 0.35 + 0.35 * P.read) { this.hold.g = 0; this.setMove(-d); return true; }
+    if (f.charge >= CHG_MAX - 2 && aligned && !busyOpp && own.big === 0 && Math.random() < 0.3 + 0.5 * P.read) { this.setMove(0); this.tap(this.dk(d), 3, 0); this.tap('s', 4, 1); this.busy(24); return true; }
+    const wantCharge = f.charge < CHG_MAX - 2 && adx > 260 && own.big === 0 && Math.random() < 0.3 + 0.3 * P.read;
+    if (!wantCharge && aligned && f.charge === 0 && own.small < 1 && Math.random() < 0.3 + 0.25 * this.ag) { this.setMove(0); this.tap(this.dk(d), 3, 0); this.tap('s', 3, 1); this.busy(ri(14, 20)); return true; }
+    if (wantCharge || (f.charge < CHG_MAX - 2 && adx > 280 && Math.random() < 0.45)) {
+      const dur = ri(24, CHG_MAX + 4); this.setMove(0); this.tap(this.dk(d), 3, 0); this.tap('s', dur, 1);
+      if (!(aligned && dur > 40 && own.big === 0 && Math.random() < 0.5)) this.tap('g', 4, dur - 3);
+      this.busy(dur + 6); return true;
+    }
+    if (adx > 560) { this.setMove(d); return true; }
+    this.setMove(0); return Math.random() < 0.55;
+  }
   decide(f, o, v) {
     const P = this.P, st = f.state;
     if (st === 'respawn') { if (f.t > this.respawnWait) { this.tap(Math.random() < 0.5 ? 'd' : (f.x < 640 ? 'r' : 'l'), 5); } return; }
@@ -1132,6 +1380,7 @@ class CpuAI {
     const oppOff = v.x < STAGE.x1 - 10 || v.x > STAGE.x2 + 10 || v.y > STAGE.y + 20;
     if (oppOff && f.grounded) {
       const edge = v.x < 640 ? STAGE.x1 + 40 : STAGE.x2 - 40;
+      if (this.S.zoner && Math.abs(dy) < 60 && adx > 120 && Math.random() < 0.5 + 0.4 * P.read) { this.setMove(0); this.tap(this.dk(d), 3, 0); this.tap('s', f.charge > 0 ? 4 : 3, 1); this.busy(18); return; }
       if (P.edgeguard && this.edgeguard(f, v)) return;
       if (adx < smashR && Math.abs(dy) < 70 && Math.random() < P.aggro) { this.setMove(0); this.tap(d < 0 ? 'l' : 'r', 4, 0); this.tap(Math.random() < 0.5 ? 's' : 'a', 5, 1); this.busy(20); }
       else this.setMove(Math.abs(f.x - edge) > 30 ? (edge > f.x ? 1 : -1) : 0);
@@ -1152,8 +1401,10 @@ class CpuAI {
         else if (adx < 70 && dy < 110 && f.vy > 0 && Math.random() < 0.4) this.tap('a', 5, 0);
         this.busy(8); return;
       }
+      if (this.S.zoner && Math.abs(dy) < 40 && adx > 160 && f.facing === d && Math.random() < 0.4) { this.tap('s', 4, 0); this.busy(14); return; }
       if (adx > 18) this.setMove(d); else this.setMove(0);
-      if (Math.abs(dy) < 70 && adx < nairR + 10 && Math.random() < P.aggro) {
+      if (this.S.pounce && Math.abs(dy) < 50 && adx > nairR && adx < nairR + 90 && f.facing === d && Math.random() < this.S.pounce) { this.tap('s', 5, 0); this.busy(16); return; }
+      if (Math.abs(dy) < 70 && adx < nairR + 10 && Math.random() < this.ag) {
         if (dy < -35) { this.hold.u = 0; this.tap('u', 6, 0); this.tap('a', 5, 1); }
         else if (f.facing === d && Math.random() < 0.35) this.tap('s', 5);
         else this.tap('a', 5);
@@ -1176,12 +1427,14 @@ class CpuAI {
       if (t === 0 && f.facing === d) { this.go(f, d, 0, 'grab'); this.busy(28); return; }
       if (t > 0) { this.go(f, d, Math.max(7, t + 1), 'grab'); this.busy(Math.round(t) + 30); return; }
     }
+    // 豆が飛んできている最中に遅い技を振らない(ガードして待つ)
+    if (o.st.shooter && f.grounded && !mistake && this.beanSoon(f, 14) && Math.random() < 0.35 + 0.6 * P.read) { this.setMove(0); this.tap('g', ri(8, 12), 0); this.busy(8); return; }
     // [Lv4〜] 差し合い: 相手の技が届かないギリギリで待って、空振りを誘う(長く膠着したら自分から攻める)
-    if (P.footsie && f.grounded && v.grounded && !mistake && this.now - this.calmT < 150 && v.state !== 'shield') {
+    if (P.footsie && !this.S.zoner && f.grounded && v.grounded && !mistake && this.now - this.calmT < 150 && v.state !== 'shield') {
       const oR = reachOf(o, 'fsmash', f.w / 2) + 12, oJ = reachOf(o, 'jab', f.w / 2);
       // リーチで勝っているなら、相手の届かない距離から先端を当てる
-      if (adx < jabR - 2 && adx > oJ + 6 && v.state !== 'attack' && Math.random() < P.footsie) { this.go(f, d, 0, 'jab'); this.busy(16); return; }
-      if (adx < smashR - 6 && adx > oR - 4 && v.state !== 'attack' && Math.random() < P.footsie * 0.5) { this.go(f, d, 0, 'fsmash'); this.busy(36); return; }
+      if (adx < jabR - 2 && adx > oJ + 6 && v.state !== 'attack' && !(Math.sign(v.vx) === d && Math.abs(v.vx) > 1.5) && Math.random() < P.footsie) { this.go(f, d, 0, 'jab'); this.busy(16); return; }
+      if (adx < smashR - 6 && adx > oR - 4 && v.state !== 'attack' && !(o.st.shooter && v.state !== 'charge') && Math.random() < P.footsie * 0.5) { this.go(f, d, 0, 'fsmash'); this.busy(36); return; }
       if (adx > jabR + 4 && adx < oR + 50 && Math.random() < P.footsie) {
         this.hold.g = 0;
         if (adx < oR) this.setMove(-d); else if (adx > oR + 35) this.setMove(d);
@@ -1189,14 +1442,20 @@ class CpuAI {
         return;
       }
     }
+    // キャラの戦い方
+    if (this.S.zoner && !mistake && this.zoner(f, v, d, adx, dy)) return;
+    // ハブラシ: ブラシの先っぽが当たる距離を保つ(近すぎたら下がる)
+    if (this.S.tipSpace && f.grounded && v.grounded && adx < jabR * 0.62 && Math.random() < this.S.tipSpace * (0.4 + 0.6 * P.read)) { this.hold.g = 0; this.setMove(-d); this.busy(ri(6, 12)); return; }
     // 間合い(人間らしいブレ込み)
-    const want = (mistake ? rnd(0.5, 1.6) : 1) * jabR * rnd(0.7, 1.0) + gauss() * P.err * 0.5;
+    const want = (mistake ? rnd(0.5, 1.6) : 1) * jabR * (this.S.tipSpace ? rnd(0.8, 0.95) : rnd(0.7, 1.0)) + gauss() * P.err * 0.5;
     if (adx > smashR + 20 + gauss() * P.err) {
-      // 接近:歩く/走る、ときどきジャンプで飛び込む
+      // 接近:歩く/走る、ときどきジャンプで飛び込む(飛び道具の相手にはジャンプ多め)
       this.hold.g = 0; this.setMove(d);
-      if (adx < smashR + 160 && Math.random() < 0.12 * this.airK * this.habit.air * (P.aggro / 0.6) / (1 + (P.adapt || 0) * this.airPain * 0.4)) {
+      const vsZoner = o.st.shooter ? 2 : 1;
+      if (this.S.dashIn && f.state === 'run' && Math.abs(f.vx) > f.st.run * 0.7 && adx < smashR + 70 && Math.random() < this.S.dashIn) { this.tap('a', 4, 0); this.busy(26); return; }
+      if (adx < smashR + 160 * vsZoner && Math.random() < 0.12 * vsZoner * this.S.hop * this.habit.air * (this.ag / 0.6) / (1 + (P.adapt || 0) * this.airPain * 0.4)) {
         const hop = Math.random() < 0.5 ? 2 : ri(6, 9);
-        this.tap('u', hop, 0); this.tap('a', 5, ri(10, 18)); this.busy(ri(26, 36));
+        this.tap('u', hop, 0); this.tap(this.S.pounce && Math.random() < this.S.pounce ? 's' : 'a', 5, ri(10, 18)); this.busy(ri(26, 36));
       }
       return;
     }
@@ -1204,14 +1463,15 @@ class CpuAI {
     const tot = this.seen.shield + this.seen.attack + this.seen.grab;
     const rShield = this.seen.shield / tot, rAtk = this.seen.attack / tot, rGrab = this.seen.grab / tot;
     const rd = P.read;
+    const slowVsShooter = o.st.shooter && !['charge', 'attack', 'landing', 'shieldDrop'].includes(v.state) ? 1 - 0.6 * P.read : 1;
     const w = {
-      jab: this.habit.jab * (adx < jabR + 4 ? 1.4 : 0.3) * (1 + rd * 2 * rGrab),
-      smash: this.habit.smash * (adx < smashR ? 1 : 0.2) * (0.7 + v.percent / 120) * (1 + rd * 1.5 * rGrab),
-      grab: this.habit.grab * (adx < grabR + 6 ? 1.2 : 0.15) * (1 + rd * 3 * rShield),
+      jab: this.S.jab * this.habit.jab * (adx < jabR + 4 ? 1.4 : 0.3) * (1 + rd * 2 * rGrab),
+      smash: this.S.smash * this.habit.smash * (adx < smashR ? 1 : 0.2) * (0.7 + v.percent / 120) * (1 + rd * 1.5 * rGrab) * (this.S.armor ? 1 + rd * 2 * rAtk : 1) * slowVsShooter,
+      grab: this.S.grab * this.habit.grab * (adx < grabR + 6 ? 1.2 : 0.15) * (1 + rd * 3 * rShield),
       shield: this.habit.shield * (1 + rd * 2.5 * rAtk),
-      wait: this.habit.wait * (1.3 - P.aggro),
+      wait: this.habit.wait * (1.3 - this.ag),
       air: this.airK * this.habit.air * 0.5 / (1 + (P.adapt || 0) * this.airPain * 0.4),
-      space: (adx < want ? 0.9 : 0.2)
+      space: (adx < want ? 0.9 : 0.2) * (this.S.zoner ? 2.5 : 1)
     };
     let pick;
     if (mistake) { const ks = Object.keys(w); pick = ks[ri(0, ks.length - 1)]; }
@@ -1289,8 +1549,8 @@ function tickSelect() {
       const inp = ops[n], owner = n === 0 ? i : 1 - i;
       if ((used[owner] || (owner === 1 - i && game.sel[owner].justReady)) && n > 0) continue;
       if (!s.ready) {
-        if (inp.pl) { s.ci = (s.ci + 3) % 4; sfx('menu'); used[owner] = true; }
-        if (inp.pr) { s.ci = (s.ci + 1) % 4; sfx('menu'); used[owner] = true; }
+        if (inp.pl) { s.ci = (s.ci + CHARS.length - 1) % CHARS.length; sfx('menu'); used[owner] = true; }
+        if (inp.pr) { s.ci = (s.ci + 1) % CHARS.length; sfx('menu'); used[owner] = true; }
         if (inp.pd) { game.ctrl[i] = (game.ctrl[i] + 1) % (CPU_MAX + 1); sfx('menu'); used[owner] = true; }
         if (inp.pu) { game.ctrl[i] = (game.ctrl[i] + CPU_MAX) % (CPU_MAX + 1); sfx('menu'); used[owner] = true; }
         if (inp.pa && game.t > 8) { s.ready = true; s.justReady = true; sfx('ok'); used[owner] = true; }
@@ -1350,6 +1610,7 @@ function tickMatch() {
     if (Math.abs(dx) < minD) { const s = (dx >= 0 ? 1 : -1) * 0.9; a.x -= s; b.x += s; }
   }
   resolveHits();
+  updateProjs();
   checkBlast(a, b); checkBlast(b, a);
   updateCam();
 }
@@ -1597,7 +1858,48 @@ function drawBrush(c, col, dark, F, pose, t) {
   else if (pose === 'attack') { stubArm(-F * hw / 2, ay, -F * 22, ay + 6, dark); stubArm(F * hw / 2, ay, F * 20, ay - 8, dark); }
   else { const b = Math.sin(t * 0.1) * 2; stubArm(-hw / 2, ay, -20, ay + 10 + b, dark); stubArm(hw / 2, ay, 20, ay + 10 - b, dark); }
 }
-const DRAWERS = { neko: drawNeko, ninjin: drawNinjin, mug: drawMug, brush: drawBrush };
+// --- エダマメ ---
+function drawEdamame(c, col, dark, F, pose, t) {
+  const w = c.w, h = c.h, r = w * 0.43, ys = [-h * 0.2, -h * 0.47, -h * 0.74];
+  const bob = pose === 'idle' ? Math.sin(t * 0.1) * 1.2 : 0;
+  feet(w, pose === 'run', t, dark);
+  // 茎と葉っぱ
+  ctx.strokeStyle = '#4e8a2a'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-F * 2, ys[2] - r + 4 + bob); ctx.quadraticCurveTo(-F * 8, ys[2] - r - 8 + bob, F * 2, ys[2] - r - 13 + bob); ctx.stroke();
+  ctx.fillStyle = '#6fcf4a'; ctx.strokeStyle = '#3f7a22'; ctx.lineWidth = 1.8;
+  ctx.beginPath(); ctx.ellipse(F * 9, ys[2] - r - 13 + bob, 8, 4.5, -F * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // さや(3つの豆のふくらみ): 外側の線 → 中身の順に描いて、ひとつながりの形にする
+  const pod = (fill, lw) => { for (const y of ys) { ctx.beginPath(); ctx.arc(F * (y === ys[1] ? 2 : 0), y + bob, r, 0, Math.PI * 2); if (lw) { ctx.lineWidth = lw; ctx.stroke(); } else ctx.fill(); } };
+  ctx.strokeStyle = dark; pod(null, 5.5); ctx.fillStyle = col; pod(true, 0);
+  // 豆のつや
+  for (const y of ys) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.beginPath(); ctx.ellipse(F * 4, y + bob, r * 0.62, r * 0.7, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.ellipse(-F * r * 0.2, y - r * 0.4 + bob, 3.2, 2, -0.5, 0, Math.PI * 2); ctx.fill(); }
+  // さやのすじ(背中側)とうぶ毛
+  ctx.strokeStyle = shade(col.startsWith('#') ? col : '#86c94a', -40); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-F * r * 0.85, ys[0] + bob); ctx.quadraticCurveTo(-F * r * 1.05, ys[1] + bob, -F * r * 0.85, ys[2] + bob); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  for (let i = 0; i < 9; i++) { const a = i * 2.4, y = ys[i % 3] + bob; ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.95, y + Math.sin(a) * r * 0.95, 0.9, 0, Math.PI * 2); ctx.fill(); }
+  drawFace(F * 3, ys[2] + 2 + bob, F, pose, 0.82, t);
+  // 腕
+  const ay = ys[1] + bob;
+  if (pose === 'guard') { stubArm(F * r * 0.6, ay, F * 6, ys[2] + 4, '#4e8a2a'); stubArm(-F * r * 0.6, ay, F * 10, ys[2] + 8, '#4e8a2a'); }
+  else if (pose === 'windup') { stubArm(F * r * 0.9, ay, F * (r + 12), ay - 4, '#4e8a2a', '#c8f08a'); stubArm(-F * r * 0.9, ay, -F * (r + 8), ay - 10, '#4e8a2a'); }
+  else if (pose === 'attack') { stubArm(F * r * 0.9, ay, F * (r + 16), ay - 2, '#4e8a2a'); stubArm(-F * r * 0.9, ay, -F * (r + 6), ay + 8, '#4e8a2a'); }
+  else if (pose === 'hurt') { stubArm(-r, ay, -r - 12, ay - 14, '#4e8a2a'); stubArm(r, ay, r + 12, ay - 14, '#4e8a2a'); }
+  else { const b = Math.sin(t * 0.1) * 2; stubArm(-r * 0.95, ay, -r - 8, ay + 10 + b, '#4e8a2a'); stubArm(r * 0.95, ay, r + 8, ay + 10 - b, '#4e8a2a'); }
+}
+// 豆(飛び道具)の見た目: ぷっくりした緑の豆。大きい豆には顔
+function drawBean(x, y, r, vx, opt) {
+  opt = opt || {};
+  ctx.save(); ctx.translate(x, y);
+  if (opt.glow) { const g = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 2); g.addColorStop(0, 'rgba(216,255,138,0.6)'); g.addColorStop(1, 'rgba(216,255,138,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 2, 0, Math.PI * 2); ctx.fill(); }
+  if (vx) { ctx.strokeStyle = 'rgba(216,255,138,0.55)'; ctx.lineWidth = r * 0.5; ctx.lineCap = 'round'; for (const k of [-0.35, 0, 0.35]) { ctx.beginPath(); ctx.moveTo(-Math.sign(vx) * r * 0.8, k * r); ctx.lineTo(-Math.sign(vx) * (r * 0.8 + Math.abs(vx) * 2.2), k * r); ctx.stroke(); } }
+  ctx.fillStyle = opt.gold ? '#ffe066' : '#9ee35a'; ctx.strokeStyle = opt.gold ? '#b8860b' : '#3f7a22'; ctx.lineWidth = Math.max(1.5, r * 0.14);
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 1.08, r * 0.92, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.38, r * 0.3, r * 0.18, -0.5, 0, Math.PI * 2); ctx.fill();
+  if (r >= 16) { const F = Math.sign(vx) || 1; drawFace(F * r * 0.12 - F * 2, r * 0.05, F, 'attack', r / 26, 0); }
+  ctx.restore();
+}
+const DRAWERS = { neko: drawNeko, ninjin: drawNinjin, mug: drawMug, brush: drawBrush, edamame: drawEdamame };
 function drawCharBody(c, color, facing, opt) {
   opt = opt || {};
   const pose = opt.pose || (opt.hurt ? 'hurt' : opt.run ? 'run' : 'idle');
@@ -1660,6 +1962,14 @@ function drawAttackFx(f, hb, m) {
     ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(hb.cx - 5, hb.cy - 4, hb.w * 0.1, hb.h * 0.07, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3;
     for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hb.cx + k * 10, hb.y); ctx.quadraticCurveTo(hb.cx + k * 16, hb.y - 10, hb.cx + k * 8, hb.y - 20); ctx.stroke(); }
+  } else if (c.id === 'edamame') {
+    // さやでペチッ+豆がポロッ
+    ctx.fillStyle = f.color; ctx.strokeStyle = dark; ctx.lineWidth = 2.5;
+    ctx.save(); ctx.translate(hb.cx, hb.cy); ctx.rotate(ang);
+    ctx.beginPath(); ctx.ellipse(0, 0, Math.max(hb.w, hb.h) * 0.45, Math.min(hb.w, hb.h) * 0.32, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    for (let i = 0; i < 3; i++) drawBean(hb.cx + Math.cos(i * 2.1 + f.t * 0.4) * hb.w * 0.35, hb.cy + Math.sin(i * 2.1 + f.t * 0.4) * hb.h * 0.35, 5, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x, f.y - f.h * 0.5, Math.hypot(hb.cx - f.x, hb.cy - (f.y - f.h * 0.5)), ang - 0.5, ang + 0.5); ctx.stroke();
   } else if (c.id === 'brush') {
     // ネックがのびてブラシヘッドでゴシゴシ
     const sx = f.x, sy = f.y - f.h * 0.8;
@@ -1739,6 +2049,22 @@ function drawFighter(f) {
   if (f.state === 'stunned') {
     for (let i = 0; i < 3; i++) { const a = frameCount * 0.12 + i * 2.1; text('★', f.x + Math.cos(a) * 24, f.y - f.h - 10 + Math.sin(a) * 6, 16, '#ffe14d', 'center', '700'); }
   }
+  // まめ鉄砲のため・保存中のため
+  if (f.state === 'charge') {
+    const k = f.chg / CHG_MAX, r = 8 + 16 * k, bx = f.x + f.facing * (f.w / 2 + 8), by = f.y - 30 * f.h / 58;
+    ctx.strokeStyle = 'rgba(216,255,138,' + (0.4 + 0.4 * k) + ')'; ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + f.t * 0.2, r0 = r + 26 - (f.t * 2 % 20); ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * r0, by + Math.sin(a) * r0); ctx.lineTo(bx + Math.cos(a) * (r0 - 8), by + Math.sin(a) * (r0 - 8)); ctx.stroke(); }
+    drawBean(bx, by, r, 0, { glow: k >= 1 || (f.t >> 2) % 2 === 0 });
+  } else if (f.charge > 0 && f.state !== 'dead') {
+    const k = f.charge / CHG_MAX, a = frameCount * 0.1;
+    drawBean(f.x + Math.cos(a) * (f.w * 0.7), f.y - f.h * 0.55 + Math.sin(a) * 10, 5 + 6 * k, 0, { glow: k >= 1 });
+  }
+  if (armorOn(f)) {
+    ctx.save(); ctx.globalAlpha = 0.55 + 0.25 * Math.sin(frameCount * 0.6);
+    ctx.strokeStyle = '#ff9a3c'; ctx.lineWidth = 5; rr(f.x - f.w / 2 - 8, f.y - f.h - 10, f.w + 16, f.h + 14, 16); ctx.stroke();
+    ctx.restore();
+    text('アーマー', f.x, f.y - f.h - 46, 13, '#ffb347', 'center', '900', 4);
+  }
   // プレイヤー表示
   const ty = f.y - f.h - (f.c.id === 'neko' ? 28 : 20);
   ctx.fillStyle = P_COLORS[f.pi];
@@ -1776,10 +2102,19 @@ function drawSuperFx(f) {
     for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + f.t * 0.15, r0 = f.h * (1.5 - p); ctx.beginPath(); ctx.moveTo(f.x + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(f.x + Math.cos(a) * (r0 - 14), cy + Math.sin(a) * (r0 - 14)); ctx.stroke(); }
     if (id === 'ninjin') { ctx.fillStyle = 'rgba(255,170,40,' + (0.5 + 0.4 * p) + ')'; ctx.beginPath(); ctx.arc(f.x + f.facing * 30, f.y - 36 * f.h / 66, 8 + 16 * p, 0, Math.PI * 2); ctx.fill(); }
     if (id === 'mug') { for (let i = 0; i < 4; i++) { ctx.fillStyle = 'rgba(243,226,199,0.6)'; ctx.beginPath(); ctx.arc(f.x + Math.sin(f.t * 0.5 + i * 2) * 14, f.y - f.h - 6 - ((f.t * 2 + i * 9) % 30), 5 + i, 0, Math.PI * 2); ctx.fill(); } }
+    if (id === 'edamame') { for (let i = 0; i < 5; i++) drawBean(f.x + f.facing * (24 + i * 7), f.y - 30 * f.h / 58 + Math.sin(f.t * 0.6 + i) * 6, 4 + 6 * p, 0, { gold: i % 2 === 0 }); }
     if (id === 'brush') { ctx.fillStyle = 'rgba(200,255,240,' + (0.4 + 0.5 * p) + ')'; ctx.beginPath(); ctx.arc(f.x + f.facing * 14, f.y - f.h + 4, 10 + 14 * p, 0, Math.PI * 2); ctx.fill(); }
     ctx.restore(); return;
   }
   if (at >= m.active) { ctx.restore(); return; }
+  if (id === 'edamame') {
+    // マズルフラッシュ+薬きょうみたいに飛ぶさや
+    const mx = f.x + f.facing * (f.w / 2 + 10), my = f.y - 30 * f.h / 58;
+    ctx.fillStyle = 'rgba(255,240,150,' + (0.5 + 0.5 * ((at >> 1) % 2)) + ')'; ctx.beginPath(); ctx.arc(mx, my, 18 + (at % 4) * 4, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = '#86c94a'; ctx.beginPath(); ctx.ellipse(f.x - f.facing * (10 + ((at * 5 + i * 20) % 50)), f.y - f.h - ((at * 3 + i * 17) % 40), 8, 4, at * 0.5 + i, 0, Math.PI * 2); ctx.fill(); }
+    text('ガトガト!', f.x, f.y - f.h - 50, 22, '#d8ff8a', 'center', '900', 5);
+    ctx.restore(); return;
+  }
   const hb = m.boxAt(f, at);
   if (id === 'neko') {
     // 爪のひっかき3本
@@ -2127,8 +2462,8 @@ function drawTouchControls() {
 function renderTitle() {
   drawBackground(false);
   // キャラクター整列
-  for (let i = 0; i < 4; i++) {
-    const c = CHARS[i], x = 340 + i * 200, y = 560 + Math.sin(frameCount * 0.05 + i) * 4;
+  for (let i = 0; i < CHARS.length; i++) {
+    const c = CHARS[i], x = 640 + (i - (CHARS.length - 1) / 2) * 180, y = 560 + Math.sin(frameCount * 0.05 + i) * 4;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, 562, 40, 8, 0, 0, Math.PI * 2); ctx.fill();
     ctx.save(); ctx.translate(x, y); ctx.scale(1.3, 1.3); drawCharBody(c, c.color, i < 2 ? 1 : -1, { t: frameCount }); ctx.restore();
   }
@@ -2222,8 +2557,8 @@ function renderSelect() {
   drawBackground(false);
   text('キャラクターをえらぼう', W / 2, 46, 36, '#ffffff', 'center', '900', 6);
   const mob = game.mobile;
-  const cw = 250, gap = 20, x0 = W / 2 - (cw * 4 + gap * 3) / 2;
-  for (let i = 0; i < 4; i++) {
+  const NC = CHARS.length, cw = 226, gap = 14, x0 = W / 2 - (cw * NC + gap * (NC - 1)) / 2;
+  for (let i = 0; i < NC; i++) {
     const c = CHARS[i], x = x0 + i * (cw + gap), y = 92;
     const p1 = game.sel[0].ci === i, p2 = game.sel[1].ci === i;
     ctx.fillStyle = 'rgba(14,16,36,0.93)'; rr(x, y, cw, 380, 18); ctx.fill();
@@ -2235,12 +2570,12 @@ function renderSelect() {
     if (p1) { ctx.fillStyle = P_COLORS[0]; rr(x + 10, y + 10, 46, 26, 8); ctx.fill(); text(game.ctrl[0] ? 'CP1' : '1P', x + 33, y + 23, 16, '#fff', 'center', '900'); }
     if (p2) { ctx.fillStyle = P_COLORS[1]; rr(x + cw - 56, y + 10, 46, 26, 8); ctx.fill(); text(game.ctrl[1] ? 'CP2' : '2P', x + cw - 33, y + 23, 16, '#fff', 'center', '900'); }
     const bounce = (p1 || p2) ? Math.abs(Math.sin(frameCount * 0.12)) * -6 : 0;
-    ctx.save(); ctx.translate(x + cw / 2, y + 170 + bounce); ctx.scale(1.4, 1.4); drawCharBody(c, (p2 && !p1 && game.sel[0].ci === i) ? c.alt : c.color, 1, { t: frameCount }); ctx.restore();
+    ctx.save(); ctx.translate(x + cw / 2, y + 170 + bounce); ctx.scale(1.35, 1.35); drawCharBody(c, (p2 && !p1 && game.sel[0].ci === i) ? c.alt : c.color, 1, { t: frameCount }); ctx.restore();
     text(c.name, x + cw / 2, y + 205, 30, '#ffffff', 'center', '900');
     ctx.fillStyle = c.color; rr(x + cw / 2 - 70, y + 230, 140, 26, 13); ctx.fill();
     text(c.type, x + cw / 2, y + 243, 15, '#1b2033', 'center', '900');
-    text(c.desc, x + cw / 2, y + 276, 13, '#dfe4ff', 'center', '600');
-    ['スピード', 'パワー', '重さ', 'ジャンプ', 'リーチ'].forEach((l, k) => statBar(x + 34, y + 302 + k * 16, l, c.bars[k], c.color));
+    c.desc.split('|').forEach((ln, k) => text(ln, x + cw / 2, y + 270 + k * 17, 13, '#dfe4ff', 'center', '600'));
+    ['スピード', 'パワー', '重さ', 'ジャンプ', c.shooter ? 'しゃてい' : 'リーチ'].forEach((l, k) => statBar(x + 24, y + 306 + k * 15, l, c.bars[k], c.color));
     if (mob) uiBtn(x, y, cw, 380, () => {
       if (game.selTimer > 0) return;
       const es = game.editSlot; game.sel[es].ci = i; sfx('menu');
@@ -2324,6 +2659,7 @@ function renderMatch() {
   const order = [...fs].sort((a, b) => (a.state === 'attack') - (b.state === 'attack'));
   fs.forEach(drawSuperTrail);
   order.forEach(drawFighter);
+  for (const p of game.projs) drawBean(p.x, p.y, p.r, p.vx, { glow: p.big, gold: p.isSuper && p.fin });
   fs.forEach(drawSuperFx);
   drawParticles();
   ctx.restore();
@@ -2422,7 +2758,7 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     }).catch(() => {});
   });
 }
-window.__NF = { VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
+window.__NF = { spawnBean, beanStats, armorOn, CHG_MAX, VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
 </script>
 </body>
 </html>

@@ -1030,12 +1030,13 @@ function snapshot(f) {
     active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps, ll: f.landLen || 0 };
 }
 // キャラごとの戦い方(全レベル共通。うまさ=反応・精度はレベルのパラメータで決まる)
+// low: Lv1〜3(確定反撃などの上級ロジックがないレベル)だけ使うクセの上書き。wary: Lv1〜3 の「大振りを見て離れる/つかむ」の頻度倍率
 const AI_STYLE = {
-  neko:    { air: 1.7, jab: 0.9, smash: 0.9, grab: 1.0, aggro: 0.04, hop: 1.8, pounce: 0.55 },
+  neko:    { air: 1.7, jab: 0.9, smash: 0.9, grab: 1.0, aggro: 0.04, hop: 1.8, pounce: 0.55, low: { smash: 0.45 } },
   ninjin:  { air: 0.8, jab: 1.6, smash: 0.8, grab: 1.1, aggro: 0.12, hop: 0.8, dashIn: 0.5 },
   mug:     { air: 0.45, jab: 0.7, smash: 1.7, grab: 1.3, aggro: -0.04, hop: 0.4, armor: 0.55 },
   brush:   { air: 0.5, jab: 1.3, smash: 1.1, grab: 0.8, aggro: 0, hop: 0.5, tipSpace: 0.6 },
-  edamame: { air: 0.6, jab: 1.1, smash: 1.0, grab: 1.0, aggro: -0.1, hop: 0.6, zoner: true }
+  edamame: { air: 0.6, jab: 1.1, smash: 1.0, grab: 1.0, aggro: -0.1, hop: 0.6, zoner: true, wary: 0.15, low: { aggro: 0.05, jab: 1.4, grab: 1.2 } }
 };
 function reachOf(f, id, oppHalfW) { const m = f.c.mv[id] || MOVES[id], r = f.st.reach; return (Math.abs(m.box.x) + m.box.w / 2) * r + oppHalfW * 0.85; }
 class CpuAI {
@@ -1048,7 +1049,7 @@ class CpuAI {
     this.habit = { jab: rnd(0.8, 1.3), smash: rnd(0.6, 1.1), grab: rnd(0.5, 1.0), shield: rnd(0.5, 1.0), wait: rnd(0.5, 1.0), air: rnd(0.4, 0.9) };
     this.seen = { shield: 1, attack: 1, grab: 1 }; this.lastSeq = 0; this.airSeen = 1; this.calmT = 0; this.pctSum = 0; this.advKey = null; this.aaUntil = 0; this.airPain = 0; this.prevSt = 'idle';
     // 上級者はキャラの長所を活かす: ハブラシはふわふわで対空に弱いので地上でリーチを活かす
-    const me = game.fighters[pi]; this.S = AI_STYLE[me ? me.c.id : 'neko'] || AI_STYLE.neko; this.airK = this.S.air; this.ag0 = this.ag = clamp(this.P.aggro + this.S.aggro, 0.2, 0.9); this.stall = 0; this.projSeen = {}; this.armorSeq = -1; this.prevPct = 0; this.ssUntil = 0;
+    const me = game.fighters[pi]; this.S = AI_STYLE[me ? me.c.id : 'neko'] || AI_STYLE.neko; this.low = !this.P.whiff && !this.P.noLow; if (this.low && this.S.low) this.S = Object.assign({}, this.S, this.S.low); this.airK = this.S.air; this.ag0 = this.ag = clamp(this.P.aggro + this.S.aggro, 0.2, 0.9); this.stall = 0; this.projSeen = {}; this.armorSeq = -1; this.prevPct = 0; this.ssUntil = 0;
     this.reactSeq = -1; this.punishSeq = -1; this.respawnWait = ri(15, 60); this.busyUntil = 0; this.moveDir = 0; this.edgeMargin = rnd(-10, 25) + (lv - 3) * 6;
   }
   sampleDelay() { const [m, sd] = this.P.react; return Math.max(this.P.minReact || 9, Math.round(m + gauss() * sd)); }
@@ -1165,11 +1166,20 @@ class CpuAI {
       if (Math.random() < this.S.armor * (0.3 + 0.6 * this.P.punish)) { this.go(f, dx > 0 ? 1 : -1, 0, 'fsmash'); this.busy(40); return; }
     }
     if (v.state === 'attack' && v.kind === 'strong' && v.t < v.su && v.seq !== this.reactSeq) {
-      this.reactSeq = v.seq;
       const danger = adx < 150 && Math.abs(v.y - f.y) < 90;
+      // [Lv1〜3] 自分が動けない間に見えた大振りも、動けるようになった時点でまだ「ため」中なら反応できる
+      if (this.low && danger && !canAct && v.su - v.t > 6) return;
+      this.reactSeq = v.seq;
       if (danger && canAct && Math.random() < this.P.guard) {
         this.releaseAll();
         const r = Math.random();
+        const vo = game.fighters[1 - this.pi], armored = this.low && v.mid && vo.c.mv[v.mid] && vo.c.mv[v.mid].armor;
+        // [Lv1〜3] アーマー付きの大振りは「つかみ」で止められる(ため中に間に合う距離なら)
+        if (armored && f.state !== 'shield' && adx < reachOf(f, 'grab', v.w / 2) + 8 && v.su - v.t - this.delay >= startupOf(f, f.c.mv.grab) + 1 && Math.random() < (0.1 + 0.3 * this.P.read) * (this.S.wary || 1)) {
+          this.go(f, dx > 0 ? 1 : -1, 0, 'grab'); this.busy(28); return;
+        }
+        // [Lv1〜3] アーマー付きの大振りは、ガードで受けずに走って離れる(空振りさせる)ことが多い
+        if (armored && adx > reachOf(vo, v.mid, f.w / 2) - 25 && Math.random() < (0.3 + 0.4 * this.P.read) * (this.S.wary || 1)) { this.setMove(dx > 0 ? -1 : 1); this.busy(ri(14, 22)); return; }
         if (r < 0.72) { this.hold.g = 0; this.tap('g', ri(24, 40), ri(1, 3)); this.busy(ri(20, 30)); }
         else if (r < 0.88) { this.tap('g', ri(10, 14), 1); this.tap(dx > 0 ? 'l' : 'r', ri(4, 6), ri(3, 5)); this.busy(26); } // 回避で逃げる
         else { this.setMove(dx > 0 ? -1 : 1); this.busy(ri(12, 20)); } // 走って離れる
@@ -1203,6 +1213,16 @@ class CpuAI {
         else if (adx < reachOf(f, 'jab', v.w / 2) && Math.random() < 0.5) { this.tap(d < 0 ? 'l' : 'r', 3, 0); this.tap('a', 5, 1); }
         else { this.tap(d < 0 ? 'l' : 'r', 5, 0); this.tap('s', 5, 1); }
         this.busy(ri(18, 28));
+      } else if (this.low && canAct && f.state !== 'shield' && Math.abs(v.y - f.y) < 40 && v.kind !== 'light' && Math.random() < this.P.punish * this.P.read * (v.su >= 20 ? 0.9 : 0.6)) {
+        // [Lv1〜3] 大振りの空振りが見えたら、たまに走り込んで反撃(レベルが上がるほど多い)
+        const real = v.su + v.active + v.rec - v.t - this.delay, d = dx > 0 ? 1 : -1, rn = f.st.run * 0.85;
+        const tr = r => Math.max(0, adx - r + 4) / rn + (adx > r ? 2 : 0), su = id => startupOf(f, f.c.mv[id]);
+        const grabR = reachOf(f, 'grab', v.w / 2), jabR = reachOf(f, 'jab', v.w / 2);
+        let act = null, t = 0;
+        if (real >= su('fsmash') + tr(myR) && v.percent > 90) { act = 'fsmash'; t = tr(myR); }
+        else if (real >= su('grab') + 2 + tr(grabR)) { act = 'grab'; t = tr(grabR); }
+        else if (real >= su('jab') + 1 + tr(jabR)) { act = 'jab'; t = tr(jabR); }
+        if (act) { this.go(f, d, t, act); this.busy(Math.round(t) + 24); }
       }
     }
   }
@@ -1379,7 +1399,9 @@ class CpuAI {
     const oppGone = v.state === 'dead' || v.state === 'respawn';
     const jabR = reachOf(f, 'jab', v.w / 2), smashR = reachOf(f, 'fsmash', v.w / 2), grabR = reachOf(f, 'grab', v.w / 2), nairR = reachOf(f, 'nair', v.w / 2);
     const mistake = Math.random() < P.mistake;
-    if (st === 'shield') { if (Math.random() < 0.6) this.hold.g = 0; }
+    // [Lv1〜3] 相手の大振りが出ている最中はガードを解かない(ほどほどに)
+    const bigNear = this.low && v.state === 'attack' && v.kind === 'strong' && v.t < v.su + v.active + 2 && adx < 220;
+    if (st === 'shield') { if (bigNear && !(o.c.mv[v.mid] || {}).armor && Math.random() < 0.3 + 0.6 * P.read) { this.hold.g = HOLD; return; } if (Math.random() < 0.6) this.hold.g = 0; }
     // 相手がいない/場外 → 中央寄りで待つ・崖で待ち構える
     if (oppGone) { this.hold.g = 0; this.setMove(Math.abs(f.x - 640) > 60 + rnd(0, 80) ? (f.x < 640 ? 1 : -1) : 0); return; }
     const oppOff = v.x < STAGE.x1 - 10 || v.x > STAGE.x2 + 10 || v.y > STAGE.y + 20;
@@ -1431,6 +1453,10 @@ class CpuAI {
       const t = Math.max(0, adx - grabR + 4) / (f.st.run * 0.85);
       if (t === 0 && f.facing === d) { this.go(f, d, 0, 'grab'); this.busy(28); return; }
       if (t > 0) { this.go(f, d, Math.max(7, t + 1), 'grab'); this.busy(Math.round(t) + 30); return; }
+    }
+    // [Lv1〜3] アーマー付きの大振りをためている相手には殴りかからず、間合いの外へ離れる(上級レベルは確定反撃で対処するので不要)
+    if (bigNear && f.grounded && !mistake && v.t < v.su && v.mid && o.c.mv[v.mid] && adx < reachOf(o, v.mid, f.w / 2) + 60 && Math.random() < (0.3 + 0.5 * P.read) * (this.S.wary || 1)) {
+      if (o.c.mv[v.mid].armor && adx > reachOf(o, v.mid, f.w / 2) - 25) { this.hold.g = 0; this.setMove(-d); this.busy(ri(8, 14)); return; }
     }
     // 豆が飛んできている最中に遅い技を振らない(ガードして待つ)
     if (o.st.shooter && f.grounded && !mistake && this.beanSoon(f, 14) && Math.random() < 0.35 + 0.6 * P.read) { this.setMove(0); this.tap('g', ri(8, 12), 0); this.busy(8); return; }

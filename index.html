@@ -344,7 +344,25 @@ function sfx(n, p) {
     case 'go': tone(880, 880, 0.3, 'square', 0.06); break;
     case 'land': noise(0.05, 0.05, 700); break;
     case 'thud': noise(0.12, 0.12, 400, 'lowpass', 120); tone(90, 50, 0.1, 'sine', 0.08); break; // マグカップの着地
-    case 'super': tone(220, 1320, 0.45, 'sawtooth', 0.06); tone(440, 1760, 0.45, 'square', 0.035); noise(0.3, 0.1, 4000); tone(1760, 1760, 0.25, 'sine', 0.04, 0.4); break;
+    case 'super': { // 発動: 上昇スイープ+ドーン+キャラ別の決め音
+      tone(220, 1320, 0.45, 'sawtooth', 0.06); tone(440, 1760, 0.45, 'square', 0.035); noise(0.3, 0.1, 4000);
+      tone(65, 40, 0.6, 'sine', 0.3, 0.05); noise(0.5, 0.18, 900, 'lowpass', 200, 0, 0.05);
+      const mot = { neko: [1320, 1760, 2640], ninjin: [880, 1175, 1760], mug: [440, 554, 659], brush: [1568, 2093, 2637], edamame: [988, 1319, 1976] }[p] || [1760, 1760, 1760];
+      mot.forEach((fq, i) => tone(fq, fq, 0.16, 'triangle', 0.05, 0.36 + i * 0.07)); break; }
+    case 'superFin': tone(70, 30, 0.8, 'sine', 0.45); noise(0.7, 0.36, 1600, 'lowpass', 120); tone(880, 1760, 0.25, 'square', 0.05); tone(1320, 2640, 0.3, 'triangle', 0.05, 0.06); noise(0.08, 0.25, 6000, 'highpass'); break;
+    case 'superKO': tone(1760, 220, 0.9, 'sawtooth', 0.05, 0.05); tone(2637, 2637, 0.5, 'sine', 0.04, 0.1); break;
+    case 'flurry': noise(0.05, 0.14, 5200, 'highpass'); tone(1100, 600, 0.05, 'sawtooth', 0.035); break;
+    case 'freeze': tone(2400, 3600, 0.25, 'sine', 0.06); tone(3000, 1800, 0.3, 'triangle', 0.04, 0.05); noise(0.3, 0.12, 7000, 'highpass'); break;
+    // 特技
+    case 'clap': noise(0.05, 0.32, 2200, 'bandpass', 0, 1.5); tone(1400, 900, 0.05, 'square', 0.045); break;           // パンッ(ねこだまし)
+    case 'drill': for (let i = 0; i < 6; i++) tone(300, 520, 0.05, 'sawtooth', 0.035, i * 0.05); noise(0.32, 0.1, 3000, 'bandpass', 5000, 3); break; // ギュイーン
+    case 'counter': tone(880, 880, 0.08, 'triangle', 0.07); tone(1320, 1320, 0.14, 'sine', 0.05, 0.05); break;          // 構え: キン
+    case 'steam': noise(0.45, 0.32, 3000, 'highpass', 900); tone(200, 90, 0.3, 'sawtooth', 0.08); tone(1500, 2600, 0.2, 'sine', 0.05); break; // カウンター成功: ブシュー!
+    case 'paste': tone(300, 160, 0.12, 'sine', 0.12); noise(0.08, 0.1, 900, 'lowpass'); break;                       // ムニュッ
+    case 'splat': noise(0.12, 0.18, 700, 'lowpass', 200); tone(220, 120, 0.1, 'sine', 0.08); break;                   // ベチャッ
+    case 'mine': tone(500, 380, 0.08, 'square', 0.05); noise(0.06, 0.08, 600, 'lowpass'); break;                     // 埋める
+    case 'beep': tone(1800, 1800, 0.04, 'square', 0.025); break;
+    case 'pop': tone(160, 50, 0.3, 'sine', 0.3); noise(0.3, 0.3, 1400, 'lowpass', 200); tone(900, 300, 0.12, 'square', 0.05); break; // 地雷ポン!
     case 'nope': tone(260, 200, 0.08, 'square', 0.04); break;
     case 'slash': for (let i = 0; i < 4; i++) { noise(0.07, 0.12, 5000, 'highpass', 0, 0, i * 0.07); tone(900, 500, 0.06, 'sawtooth', 0.03, i * 0.07); } break;
     case 'beam': tone(180, 120, 0.7, 'sawtooth', 0.08); tone(720, 680, 0.7, 'square', 0.025); noise(0.6, 0.1, 2200); break;
@@ -445,27 +463,54 @@ const MOVES = {
 // ===== 必殺技(ゲージ満タンで発動) =====
 // startup 中は本人無敵・相手は動ける(見てからガード/回避/ジャンプで避けられる)。空振りすると大きなスキ。
 const SUPER_MAX = 100, SUPER_GAIN_DEAL = 0.8, SUPER_GAIN_TAKE = 0.45, SUPER_FREEZE = 8;
+// 当たれば「%70前後でふっとばし撃墜が半分くらい見える」強さ。強さの種類はキャラごとに違う:
+//   ネコ = 捕まえて連続ひっかき → とどめ / ニンジン = 純粋なふっとばしビーム / マグカップ = 大ダメージ+真上へ打ち上げ
+//   ハブラシ = ひろい凍結ウェーブ(凍らせてから破裂) / エダマメ = 豆の連射で%をためて最後に大豆
+// どれも ため中(startup)は本人無敵だが相手も動ける → ガード・回避・ジャンプでかわせる。空振りは大きなスキ。
+// lockSup: 当たった相手をその場に固定(locked)。every ごとに dmg、max フレームで fin のふっとばし
 const SUPERS = {
-  neko: { name: 'ネコまっしぐら', startup: 26, active: 24, rec: 34, dash: 13, multi: 4, finFrom: 20, sfx: 'slash', box: { x: 20, y: -36, w: 96, h: 72 },
-    small: { dmg: 2, base: 3, gr: 0, ang: 60, shieldMul: 0.6, carry: (a, b) => { b.kbx = a.vx * 1.0; b.kby = -1.2; } },
-    fin: { dmg: 7, base: 8, gr: 0.17, ang: 40, kind: 'strong' },
-    boxAt(f) { return boxOf(f, this); } },
-  ninjin: { name: 'キャロットビーム', startup: 32, active: 22, rec: 36, multi: 4, finFrom: 18, sfx: 'beam', box: { x: 320, y: -36, w: 600, h: 50 },
-    small: { dmg: 2, base: 3, gr: 0, ang: 12, shieldMul: 0.6, carry: (a, b, d) => { b.kbx = d * 2.2; b.kby = -1.2; } },
-    fin: { dmg: 6, base: 7.6, gr: 0.17, ang: 32, kind: 'strong' },
-    boxAt(f, at) { const len = Math.min(600, 140 + at * 95), hs = f.h / 66, x0 = f.x + f.facing * 26, cy = f.y - 36 * hs; return { x: f.facing > 0 ? x0 : x0 - len, y: cy - 25, w: len, h: 50, cx: x0 + f.facing * len / 2, cy }; } },
-  mug: { name: '熱々コーヒー噴火', startup: 28, active: 18, rec: 38, multi: 5, finFrom: 14, sfx: 'geyser', rel: true, box: { x: 0, y: -70, w: 250, h: 200 },
-    small: { dmg: 2, base: 3, gr: 0, ang: 88, rel: true, shieldMul: 0.6, carry: (a, b) => { b.kbx = (a.x - b.x) * 0.04; b.kby = -3; } },
-    fin: { dmg: 8, base: 8.1, gr: 0.16, ang: 80, rel: true, kind: 'strong' },
-    boxAt(f, at) { const k = Math.min(1, 0.55 + at * 0.09), w = 230 * k, h = 200 * k, cy = f.y - h / 2 + 10; return { x: f.x - w / 2, y: cy - h / 2, w, h, cx: f.x, cy }; } },
-  brush: { name: 'ミントブラスト', startup: 24, active: 32, rec: 30, multi: 999, finFrom: 0, sfx: 'mint', box: { x: 300, y: -50, w: 100, h: 110 },
+  neko: { name: 'ネコまっしぐら', startup: 26, active: 24, rec: 34, dash: 13, multi: 999, finFrom: 0, sfx: 'slash', box: { x: 20, y: -36, w: 96, h: 72 },
+    lockSup: { dmg0: 2, max: 42, every: 7, dmg: 2, kind: 'claw' },
     small: null,
-    fin: { dmg: 17, base: 10, gr: 0.18, ang: 45, kind: 'strong' },
-    boxAt(f, at) { const cx = f.supX + f.facing * (50 + at * 20), cy = f.supY - 55; return { x: cx - 55, y: cy - 65, w: 110, h: 130, cx, cy }; } }
+    fin: { dmg: 8, base: 11.8, gr: 0.192, ang: 40, kind: 'strong' },
+    boxAt(f) { return boxOf(f, this); } },
+  ninjin: { name: 'キャロットビーム', startup: 32, active: 22, rec: 36, multi: 999, finFrom: 0, sfx: 'beam', box: { x: 320, y: -36, w: 600, h: 50 },
+    small: null,
+    fin: { dmg: 10, base: 11.7, gr: 0.175, ang: 30, kind: 'strong' },
+    boxAt(f, at) { const len = Math.min(600, 140 + at * 95), hs = f.h / 66, x0 = f.x + f.facing * 26, cy = f.y - 36 * hs; return { x: f.facing > 0 ? x0 : x0 - len, y: cy - 25, w: len, h: 50, cx: x0 + f.facing * len / 2, cy }; } },
+  mug: { name: '熱々コーヒー噴火', startup: 28, active: 22, rec: 38, multi: 3, finFrom: 18, sfx: 'geyser', rel: true, box: { x: 0, y: -70, w: 250, h: 200 },
+    small: { dmg: 4, base: 3, gr: 0, ang: 88, rel: true, shieldMul: 0.5, carry: (a, b) => { b.kbx = (a.x - b.x) * 0.05; b.kby = -2.4; } },
+    fin: { dmg: 12, base: 12.9, gr: 0.223, ang: 60, rel: true, kind: 'strong' },
+    boxAt(f, at) { const k = Math.min(1, 0.55 + at * 0.09), w = 230 * k, h = 200 * k, cy = f.y - h / 2 + 10; return { x: f.x - w / 2, y: cy - h / 2, w, h, cx: f.x, cy }; } },
+  brush: { name: 'ミントブラスト', startup: 24, active: 32, rec: 30, multi: 999, finFrom: 0, sfx: 'mint', box: { x: 300, y: -70, w: 110, h: 170 },
+    lockSup: { dmg0: 6, max: 40, every: 0, dmg: 0, kind: 'ice' },
+    small: null,
+    fin: { dmg: 10, base: 12.1, gr: 0.2, ang: 45, kind: 'strong' },
+    boxAt(f, at) { const cx = f.supX + f.facing * (50 + at * 20), cy = f.supY - 70; return { x: cx - 55, y: cy - 85, w: 110, h: 170, cx, cy }; } }
 };
-for (const id in SUPERS) { const m = SUPERS[id]; m.kind = 'super'; m.super = true; MOVES['super_' + id] = m; for (const h of [m.small, m.fin]) if (h) { h.noMeter = true; h.isSuper = true; h.kind = h.kind || 'super'; } }
-SUPERS.edamame = { name: 'まめまめガトリング', startup: 26, active: 44, rec: 34, multi: 999, finFrom: 999, sfx: 'gatling', gatling: true, box: { x: 300, y: -32, w: 600, h: 40 }, small: null, fin: null, boxAt() { return null; } };
+for (const id in SUPERS) { const m = SUPERS[id]; m.kind = 'super'; m.super = true; MOVES['super_' + id] = m; for (const h of [m.small, m.fin]) if (h) { h.noMeter = true; h.isSuper = true; h.kind = h.kind || 'super'; } m.fin.finisher = true; }
+SUPERS.edamame = { name: 'まめまめガトリング', startup: 26, active: 44, rec: 34, multi: 999, finFrom: 999, sfx: 'gatling', gatling: true, box: { x: 300, y: -32, w: 600, h: 40 }, small: null, fin: null, boxAt() { return null; },
+  bean: { dmg: 2, base: 3, gr: 0, ang: 14 }, finBean: { dmg: 10, base: 9.8, gr: 0.164, ang: 38 } };
 SUPERS.edamame.kind = 'super'; SUPERS.edamame.super = true; MOVES.super_edamame = SUPERS.edamame;
+// ===== 特技(必殺ボタンを、ゲージが満タンでない時に押す): 1キャラ1つ・方向で変わらない・ゲージは使わない =====
+// どれも発生と後スキがはっきりあり、対策(ガード・つかみ・ジャンプ・回避)がある。空中では着地(か被弾)まで1回だけ
+// hits: 発動後 t0〜t1 フレームに出る判定(段が変わるとまた当たる)
+const SPECIALS = {
+  neko: { name: 'ねこだまし', short: 'ねこだまし', desc: '猫だましでひるませ、相手を飛びこえて裏からひっかく', startup: 6, active: 22, rec: 8, land: 11, air: true, sfx: 'clap',
+    hits: [{ t0: 0, t1: 2, box: { x: 30, y: -40, w: 50, h: 46 }, h: { dmg: 1, base: 3, gr: 0, ang: 80, kind: 'light', stun: 12, shieldMul: 0.5 } },
+           { t0: 10, t1: 21, box: { x: 0, y: -30, w: 60, h: 56 }, h: { dmg: 5, base: 5.6, gr: 0.075, ang: 50, rel: true, kind: 'light' } }] },
+  ninjin: { name: 'にんじんドリル', short: 'ドリル', desc: '回転しながら横に突進する多段ヒット。空中でも横に進める(復帰にも)', startup: 11, active: 18, rec: 20, land: 12, air: true, sfx: 'drill', speed: 9.5,
+    hits: [0, 5, 10].map(t0 => ({ t0, t1: t0 + 3, box: { x: 26, y: -30, w: 58, h: 40 }, h: { dmg: 2, base: 2.5, gr: 0, ang: 20, kind: 'light', shieldMul: 0.7, drill: true, carry: (a, b) => { b.kbx = a.vx * 0.95; b.kby = -1; } } }))
+      .concat([{ t0: 14, t1: 17, box: { x: 26, y: -30, w: 62, h: 44 }, h: { dmg: 3, base: 5.4, gr: 0.06, ang: 40, kind: 'light', drill: true } }]) },
+  mug: { name: '湯気カウンター', short: 'カウンター', desc: '構え中に攻撃されると、湯気を噴き返して強くふっとばす(つかみには負ける)', startup: 3, active: 24, rec: 22, land: 8, air: true, sfx: 'counter', counter: true,
+    blast: { box: { x: 40, y: -42, w: 190, h: 124 }, h: { base: 8.6, gr: 0.155, ang: 38, kind: 'strong' } } },
+  brush: { name: '歯みがき粉ショット', short: 'ペースト', desc: 'ベタベタの歯みがき粉を飛ばす。当たると少しのあいだ足が遅くなる', startup: 13, active: 1, rec: 20, land: 9, air: true, sfx: 'paste', paste: true },
+  edamame: { name: 'まめ地雷', short: 'じらい', desc: '足もとに豆の地雷を1つ置く。相手がふむとポンとはじける(攻撃で壊せる)', startup: 10, active: 1, rec: 16, land: 8, air: true, sfx: 'mine', mine: true }
+};
+for (const id in SPECIALS) { const m = SPECIALS[id]; m.kind = 'special'; m.sp = true; m.box = { x: 30, y: -36, w: 40, h: 40 }; MOVES['special_' + id] = m; for (const h of m.hits || []) h.h.spec = true; }
+const PASTE = { r: 13, sp: 9.5, vy: -1.6, g: 0.1, dmg: 5, base: 4.4, gr: 0.035, ang: 35, life: 70, kind: 'light', lv: 10, slow: 110, shieldMul: 0.8 };
+const MINE = { arm: 36, life: 480, w: 34, h: 22, hit: { dmg: 7, base: 5.8, gr: 0.075, ang: 72, kind: 'light', spec: true } };
+const SLOW_K = 0.6;
 for (const k in MOVES) MOVES[k].id = k;
 for (const c of CHARS) {
   c.mv = {};
@@ -510,7 +555,8 @@ function makeFighter(pi, ci, alt) {
     grounded: true, onSoft: false, jumps: c.jumps, canUpB: true, canDodge: true, ff: false, dropT: 0,
     percent: 0, stocks: game.stocks, shieldHP: SHIELD_MAX, invuln: 0, stunLen: 0, landLen: 0, rollDir: 0,
     bA: 0, bS: 0, bG: 0, bJ: 0, bD: 0, bL: 0, bR: 0, bX: 0, meter: 0, supX: 0, supY: 0, trail: [], pctShake: 0, flash: 0, holdT: 0,
-    stats: { dealt: 0, kos: 0, maxPct: 0, supers: 0, superHits: 0, superBlocked: 0, shots: 0, shotHits: 0, armorHits: 0, tips: 0 }, anim: 0, charge: 0, chg: 0, shotLv: 0
+    stats: { dealt: 0, kos: 0, maxPct: 0, supers: 0, superHits: 0, superBlocked: 0, shots: 0, shotHits: 0, armorHits: 0, tips: 0, specials: 0, spHits: 0, counters: 0, mineHits: 0, pasteHits: 0 }, anim: 0, charge: 0, chg: 0, shotLv: 0,
+    slowT: 0, spAir: false, sp: null, lock: null, sup: null
   };
 }
 function startMatch() {
@@ -518,7 +564,7 @@ function startMatch() {
   game.fighters = [makeFighter(0, s[0].ci, false), makeFighter(1, s[1].ci, s[0].ci === s[1].ci)];
   game.hitstop = 0; game.shake = 0; game.superFx = null; game.countdown = 150; game.goTimer = 0; game.endTimer = -1; game.winner = -1;
   game.paused = false; particles.length = 0;
-  game.projs = []; game.projHist = [];
+  game.projs = []; game.projHist = []; game.mines = []; game.slowmo = 0;
   game.ais = game.ctrl.map((lv, i) => lv > 0 ? new CpuAI(i, lv) : null); game.hist = [[], []]; game.matchT = 0; game.kos = [];
   cam.x = 640; cam.y = 380; cam.z = 1; fxReset();
   setScene('match');
@@ -539,6 +585,7 @@ function startupOf(f, m) { return Math.max(2, m.startup + (m.kind === 'strong' ?
 function activeHitbox(f) {
   const m = f.move;
   if (!m || f.state !== 'attack' || m.shot) return null;
+  if (m.sp) { const h = spHit(f, m); return h ? boxOf(f, h) : null; }
   const su = startupOf(f, m);
   if (f.t < su || f.t >= su + m.active) return null;
   return m.super ? m.boxAt(f, f.t - su) : boxOf(f, m);
@@ -551,20 +598,160 @@ function sweepBox(f) {
   return boxOf(f, m);
 }
 function superReady(f) { return f.meter >= SUPER_MAX; }
+// 必殺ボタン: ゲージ満タン → 必殺技 / それ以外 → 特技(ゲージは使わない)
 function trySuper(f, inp) {
   if (!f.bX) return false;
-  f.bX = 0;
-  if (!superReady(f)) { if (!game.ais[f.pi]) { particles.push({ x: f.x, y: f.y - f.h - 34, vx: 0, vy: -1.2, life: 32, max: 32, size: 20, color: '#ffffff', type: 'text', text: 'まだ!' }); sfx('nope'); } return false; }
-  doSuper(f, inp); return true;
+  if (!superReady(f)) { if (!f.grounded && f.spAir) return false; f.bX = 0; return trySpecial(f, inp); }
+  f.bX = 0; doSuper(f, inp); return true;
 }
 function doSuper(f, inp) {
   const sp = SUPERS[f.c.id];
-  f.meter = 0; f.stats.supers++; f.supHit = 0;
+  f.meter = 0; f.stats.supers++; f.supHit = 0; f.sup = { dir: 0, lockPi: null };
   startMove(f, 'super_' + f.c.id, inp);
+  f.sup.dir = f.facing;
   f.vx = 0; f.vy = 0; f.kbx = 0; f.kby = 0; f.ff = false; f.supX = f.x; f.supY = f.y; f.trail = [];
-  game.superFx = { pi: f.pi, t: 0, max: 48, name: sp.name };
+  game.superFx = { pi: f.pi, t: 0, max: 52, name: sp.name };
   game.hitstop = Math.max(game.hitstop, SUPER_FREEZE); game.shake = Math.max(game.shake, 6);
-  sfx('super'); burst(f.x, f.y - f.h / 2, 26, '#ffd23d', 9); fxSuper(f);
+  sfx('super', f.c.id); burst(f.x, f.y - f.h / 2, 26, '#ffd23d', 9); fxSuper(f);
+}
+function trySpecial(f, inp) {
+  const id = f.c.id, d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
+  startMove(f, 'special_' + id, inp);
+  if (!f.grounded) { if (d) f.facing = d; f.spAir = true; }
+  f.sp = { phase: -1, stop: false, turned: false, cnt: null };
+  f.stats.specials++;
+  sfx(SPECIALS[id].sfx);
+  return true;
+}
+// 今出ている特技の判定({box, h})。なければ null
+function spHit(f, m) {
+  const S = f.sp; if (!S) return null;
+  if (m.counter) return S.cnt && S.cnt.t >= 3 && S.cnt.t <= 8 ? { box: m.blast.box, h: S.cnt.hit } : null;
+  if (!m.hits || S.stop) return null;
+  const at = f.t - startupOf(f, m);
+  for (const h of m.hits) if (at >= h.t0 && at <= h.t1) return h;
+  return null;
+}
+function counterOn(b) { const m = b.move; if (b.state !== 'attack' || !m || !m.counter || !b.sp || b.sp.cnt) return false; const at = b.t - startupOf(b, m); return at >= 0 && at < m.active; }
+// 湯気カウンター成功: 攻撃を受け止め、少し後に湯気の爆発(本人は無敵)
+function triggerCounter(b, a, m, proj) {
+  const dmg = clamp(Math.round(m.dmg * (proj ? 1 : a.st.power) * 1.3), 8, 20), M = b.move;
+  b.sp.cnt = { t: 0, hit: Object.assign({ dmg }, SPECIALS.mug.blast.h, { spec: true }) };
+  const d = Math.sign((proj ? proj.x : a.x) - b.x); if (d) b.facing = d;
+  b.t = startupOf(b, M) + M.active + recOf(b, M) - 26; b.hitIds.clear();
+  b.stats.counters++;
+  game.hitstop = Math.max(game.hitstop, 10); game.shake = Math.max(game.shake, 7);
+  sfx('steam'); burst(b.x, b.y - b.h, 18, '#ffffff', 7); fxCounter(b);
+  particles.push({ x: b.x, y: b.y - b.h - 30, vx: 0, vy: -1, life: 40, max: 40, size: 24, color: '#ffe2b8', type: 'text', text: 'カウンター!' });
+}
+// 特技の毎フレーム処理(移動・発射・終了)
+function specialTick(f, inp, o, m, su) {
+  const at = f.t - su, id = f.c.id, S = f.sp || (f.sp = { phase: -1, stop: false, turned: false, cnt: null });
+  if (m.hits) { let ph = -1; for (let i = 0; i < m.hits.length; i++) if (at >= m.hits[i].t0 && at <= m.hits[i].t1) ph = i; if (ph >= 0 && ph !== S.phase) { S.phase = ph; f.hitIds.clear(); } }
+  let grav = true;
+  if (id === 'neko') {
+    if (at < 0) f.vx *= f.grounded ? 0.7 : 0.9;
+    if (at === 0) { // 猫だまし → ぴょんと跳びこえる
+      const gr = f.grounded; f.vy = gr ? -9.4 : -6.6; f.vx = f.facing * (gr ? 7.4 : 5.6) * slowK(f); f.grounded = false; f.y -= 1; f.ff = false;
+    }
+    if (at === 9 && !S.turned) { S.turned = true; const d = Math.sign(o.x - f.x); if (d && o.state !== 'dead' && o.state !== 'respawn') f.facing = d; } // 頂点で相手のほうへ振り向く(裏回り)
+  } else if (id === 'ninjin') {
+    if (at < 0) { f.vx *= 0.75; if (!f.grounded) { f.vy *= 0.6; grav = false; } }
+    else if (at < m.active && !S.stop) { f.vx = f.facing * m.speed; if (!f.grounded) { f.vy = 0; grav = false; } }
+    else f.vx *= f.grounded ? 0.82 : 0.95;
+  } else if (id === 'mug') {
+    f.vx *= 0.7;
+    if (S.cnt) { S.cnt.t++; if (!f.grounded) { f.vy *= 0.5; grav = false; } }
+    else if (at >= 0 && at < m.active && !f.grounded) f.vy = Math.min(f.vy, 1.5);
+  } else {
+    f.vx *= f.grounded ? 0.8 : 0.96;
+    if (at === 0) { if (id === 'brush') spawnPaste(f); else plantMine(f); }
+  }
+  if (!f.grounded && grav) gravity(f);
+  if (f.t >= su + m.active + recOf(f, m)) { f.move = null; f.sp = null; f.state = f.grounded ? 'idle' : 'air'; f.t = 0; }
+}
+function slowK(f) { return f.slowT > 0 ? SLOW_K : 1; }
+// ハブラシ: 歯みがき粉(ゆるい放物線。床に落ちるか時間で消える。画面に1つまで)
+function spawnPaste(f) {
+  if (game.projs.some(p => p.pi === f.pi && p.paste)) { puff(f.x + f.facing * 24, f.y - 44, 4, '#e8fff6'); return; }
+  const hs = f.h / 66, x = f.x + f.facing * (f.w / 2 + 14), y = f.y - 46 * hs;
+  const p = Object.assign({}, PASTE, { paste: true, big: false, air: !f.grounded, pi: f.pi, x, y, vx: f.facing * PASTE.sp, t: 0, id: (game.projSeq = (game.projSeq || 0) + 1) });
+  game.projs.push(p);
+}
+// エダマメ: まめ地雷(1つまで。新しく置くと古いのは消える)。空中で置くと下に落ちる
+function plantMine(f) {
+  game.mines = game.mines.filter(mn => { if (mn.pi === f.pi) { puff(mn.x, mn.y - 6, 6, '#b6ec7a'); return false; } return true; });
+  let x = f.x + f.facing * (f.w / 2 + 18);
+  if (f.grounded) { const pl = PLATS.find(q => Math.abs(q.y - f.y) < 1 && f.x >= q.x1 - 30 && f.x <= q.x2 + 30); if (pl) x = clamp(x, pl.x1 + 12, pl.x2 - 12); }
+  game.mines.push({ pi: f.pi, x, y: f.y, vy: 0, onGround: f.grounded, t: 0, id: (game.projSeq = (game.projSeq || 0) + 1) });
+}
+function mineBox(mn) { return { x: mn.x - MINE.w / 2, y: mn.y - MINE.h, w: MINE.w, h: MINE.h + 2, cx: mn.x, cy: mn.y - MINE.h / 2 }; }
+function updateMines() {
+  const fs = game.fighters;
+  for (const mn of game.mines) {
+    mn.t++;
+    if (!mn.onGround) {
+      const py = mn.y; mn.vy = Math.min(12, mn.vy + 0.5); mn.y += mn.vy;
+      for (const q of PLATS) if (mn.x > q.x1 && mn.x < q.x2 && py <= q.y && mn.y >= q.y) { mn.y = q.y; mn.onGround = true; mn.vy = 0; break; }
+      if (mn.y > BLAST.y2) { mn.dead = true; continue; }
+    }
+    if (mn.t > MINE.life) { mn.dead = true; puff(mn.x, mn.y - 8, 6, '#b6ec7a'); continue; }
+    if (mn.onGround && mn.t >= MINE.arm && (mn.t - MINE.arm) % 30 === 0 && fxLive) sfx('beep');
+    const a = fs[mn.pi], b = fs[1 - mn.pi], box = mineBox(mn);
+    const hb = activeHitbox(b);   // 相手の攻撃で壊せる
+    if (hb && overlap(hb, box)) { mn.dead = true; hitSpark(mn.x, mn.y - 10, 0.6, '#d8ff8a'); sfx('hit'); puff(mn.x, mn.y - 8, 8, '#b6ec7a'); continue; }
+    if (mn.t < MINE.arm || !mn.onGround || isIntangible(b) || !overlap(box, hurtOf(b))) continue;
+    mn.dead = true;
+    const dir = Math.sign(b.x - mn.x) || -b.facing;
+    sfx('pop'); burst(mn.x, mn.y - 12, 16, '#c8f08a', 7); fxMine(mn);
+    if (b.state === 'shield' || b.state === 'shieldstun') { shieldHit(a, b, MINE.hit, mn.x, false); continue; }
+    if (armorHit(a, b, MINE.hit)) continue;
+    applyDamage(a, b, MINE.hit, dir, false); a.stats.mineHits++; a.stats.spHits++;
+  }
+  game.mines = game.mines.filter(mn => !mn.dead);
+}
+// 必殺技でつかまえる(ネコ)/凍らせる(ハブラシ): 相手はその場で動けず、時間が来たらとどめのふっとばし
+function startLock(a, b, m0) {
+  const L = m0.lockSup, dmg = Math.round(L.dmg0 * a.st.power), dir = a.sup && a.sup.dir || a.facing;
+  b.percent = Math.min(999, b.percent + dmg); a.stats.dealt += dmg; b.stats.maxPct = Math.max(b.stats.maxPct, b.percent);
+  b.state = 'locked'; b.t = 0; b.move = null; b.chg = 0; b.vx = b.vy = b.kbx = b.kby = 0; b.ff = false; b.sp = null;
+  b.lock = { by: a.pi, kind: L.kind, max: L.max, every: L.every, dmg: L.dmg, fin: m0.fin, dir, x: b.x, y: b.y };
+  b.flash = 6; b.pctShake = 14; b.lastHitT = game.matchT; b.lastSuper = true;
+  if (a.supHit !== 1) { if (a.supHit === 2) a.stats.superBlocked--; a.supHit = 1; a.stats.superHits++; }
+  game.hitstop = Math.max(game.hitstop, 8); game.shake = Math.max(game.shake, 9);
+  sfx(L.kind === 'ice' ? 'freeze' : 'flurry'); hitSpark(b.x, b.y - b.h / 2, 1.2, P_COLORS[a.pi]); fxLockStart(a, b);
+  if (L.kind === 'claw') { a.t = startupOf(a, a.move) + a.move.active; a.sup.lockPi = b.pi; a.vx = 0; }
+}
+function lockTick(b) {
+  const L = b.lock, a = game.fighters[L.by];
+  b.vx = b.vy = b.kbx = b.kby = 0; b.x = L.x; b.y = L.y;
+  if (L.every && b.t % L.every === 0 && b.t < L.max) {
+    const dmg = Math.round(L.dmg * a.st.power); b.percent = Math.min(999, b.percent + dmg); a.stats.dealt += dmg; b.stats.maxPct = Math.max(b.stats.maxPct, b.percent);
+    b.flash = 3; b.pctShake = 8; game.hitstop = Math.max(game.hitstop, 2); game.shake = Math.max(game.shake, 3);
+    sfx('flurry'); hitSpark(b.x + rnd(-18, 18), b.y - b.h / 2 + rnd(-18, 18), 0.7, P_COLORS[a.pi]); fxLockTick(a, b);
+  }
+  if (b.t >= L.max) { b.lock = null; b.state = 'air'; b.grounded = false; applyDamage(a, b, L.fin, L.dir, false); superFinish(a, b); }
+}
+// とどめのヒット: 大きなヒットストップ+演出。撃墜コースならスローモーション(描画側だけ)
+function superFinish(a, b) {
+  game.hitstop = Math.max(game.hitstop, 16); game.shake = Math.max(game.shake, 18);
+  burst(b.x, b.y - b.h / 2, 30, '#ffd23d', 12);
+  const ko = predictKO(b);
+  if (ko) game.slowmo = 30;
+  sfx('superFin'); if (ko) sfx('superKO');
+  fxSuperFin(a, b, ko);
+}
+// ふっとびの軌道をざっくり計算して、場外まで飛ぶか(演出用の見込み)
+function predictKO(b) {
+  let x = b.x, y = b.y, kx = b.kbx, ky = b.kby, vy = 0;
+  for (let i = 0; i < 200; i++) {
+    x += kx; y += vy + ky;
+    const km = Math.hypot(kx, ky); if (km > 0) { const nm = Math.max(0, km - KB_DECAY); kx *= nm / km; ky *= nm / km; }
+    vy = Math.min(vy + b.st.grav, b.st.fall);
+    if (x < BLAST.x1 || x > BLAST.x2 || y - b.h < BLAST.y1) return true;
+    if (km < 0.3 && i > b.stunLen) break;
+  }
+  return false;
 }
 function startMove(f, id, inp) {
   const m = f.c.mv[id] || MOVES[id];
@@ -577,7 +764,7 @@ function startMove(f, id, inp) {
   }
 }
 function airDrift(f, inp, mult) {
-  const st = f.st, d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0), max = st.air * (mult || 1);
+  const st = f.st, d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0), max = st.air * (mult || 1) * slowK(f);
   if (d) {
     if (d * f.vx < max) f.vx = Math.min(max, d * f.vx + st.aAcc * (mult || 1)) * d;
   } else {
@@ -595,7 +782,7 @@ function groundMove(f, inp) {
   const st = f.st, d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
   if (d) {
     f.facing = d;
-    const target = d * st.run;
+    const target = d * st.run * slowK(f);
     if (f.vx * d < 0) f.vx *= 0.3; // 振り向きは素早く
     f.vx += clamp(target - f.vx, -st.gAcc, st.gAcc);
     f.state = 'run';
@@ -627,14 +814,14 @@ function tryAirActions(f, inp) {
   if (f.bS) { f.bS = 0; if (inp.u && f.canUpB) startMove(f, 'recover', inp); else if (!inp.u) { startMove(f, 'fair', inp); if (f.move.shot) { f.shotLv = f.charge; f.charge = 0; } } else return false; return true; }
   if (f.bA) { f.bA = 0; startMove(f, inp.u ? 'uair' : 'nair', inp); sfx('swing'); return true; }
   if (f.bJ && f.jumps > 0) {
-    f.bJ = 0; f.jumps--; f.vy = -f.st.dj; f.ff = false; f.kbx *= 0.4; f.kby = 0;
+    f.bJ = 0; f.jumps--; f.vy = -f.st.dj * (f.slowT > 0 ? 0.88 : 1); f.ff = false; f.kbx *= 0.4; f.kby = 0;
     const d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0); if (d) { f.vx = d * f.st.air; f.facing = d; }
     sfx('dj'); puff(f.x, f.y, 6, '#ffffff'); return true;
   }
   return false;
 }
 function land(f) {
-  f.jumps = f.st.jumps; f.canUpB = true; f.canDodge = true; f.ff = false;
+  f.jumps = f.st.jumps; f.canUpB = true; f.canDodge = true; f.ff = false; f.spAir = false;
   f.kby = 0; f.vy = 0; f.kbx *= 0.6;
   switch (f.state) {
     case 'attack':
@@ -699,12 +886,13 @@ function updateFighter(f, inp, o) {
   if (f.invuln > 0) f.invuln--;
   if (f.flash > 0) f.flash--;
   if (f.pctShake > 0) f.pctShake--;
+  if (f.slowT > 0) f.slowT--;
   if (f.state !== 'shield' && f.state !== 'shieldstun' && f.state !== 'stunned') f.shieldHP = Math.min(SHIELD_MAX, f.shieldHP + 0.09);
   const st = f.st;
   switch (f.state) {
     case 'dead':
       if (f.stocks > 0 && f.t > 60) {
-        Object.assign(f, { x: 640, y: 150, vx: 0, vy: 0, kbx: 0, kby: 0, percent: 0, state: 'respawn', t: 0, move: null,
+        Object.assign(f, { x: 640, y: 150, vx: 0, vy: 0, kbx: 0, kby: 0, percent: 0, state: 'respawn', t: 0, move: null, slowT: 0, spAir: false, sp: null, lock: null, sup: null,
           jumps: st.jumps, canUpB: true, canDodge: true, ff: false, shieldHP: SHIELD_MAX, facing: f.pi === 0 ? 1 : -1 });
       }
       return;
@@ -722,7 +910,7 @@ function updateFighter(f, inp, o) {
       if (f.bA) { f.bA = 0; startMove(f, 'utilt', inp); sfx('swing'); break; }
       if (f.t >= JUMPSQUAT) {
         f.state = 'air'; f.t = 0; f.grounded = false;
-        f.vy = -(inp.u ? st.jump : st.jump * 0.66);
+        f.vy = -(inp.u ? st.jump : st.jump * 0.66) * (f.slowT > 0 ? 0.88 : 1);
         const d = (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
         f.vx = clamp(f.vx, -st.air, st.air); if (d) f.vx = d * Math.max(Math.abs(f.vx), st.air * 0.8);
         f.jumps = st.jumps - 1; f.y -= 1;
@@ -739,6 +927,20 @@ function updateFighter(f, inp, o) {
       break;
     case 'attack': {
       const m = f.move, su = startupOf(f, m);
+      if (m.sp) { specialTick(f, inp, o, m, su); break; }
+      if (m.super && f.sup && f.sup.lockPi != null) {
+        // ネコまっしぐら: つかまえた相手のまわりを左右に瞬間移動しながら連続ひっかき(相手が固定されている間)
+        const b = game.fighters[f.sup.lockPi];
+        if (b.state === 'locked' && b.lock && b.lock.by === f.pi) {
+          f.t--;
+          const k = Math.floor(b.t / 7), last = b.t >= b.lock.max - 7, side = last ? -f.sup.dir : (k % 2 ? 1 : -1) * f.sup.dir;
+          f.x = b.x + side * (b.w / 2 + f.w / 2 + 4); f.y = b.y; f.vx = f.vy = f.kbx = f.kby = 0; f.facing = -side;
+          f.trail.push({ x: f.x, y: f.y }); if (f.trail.length > 8) f.trail.shift();
+          if (b.t % 3 === 0) superParticles(f, m, 0);
+          break;
+        }
+        f.sup.lockPi = null; f.facing = f.sup.dir; f.t = Math.max(f.t, su + m.active + recOf(f, m) - 16);
+      }
       if (m.super && f.t < su + m.active) {
         // 必殺技: ため中〜発動中は空中でも静止(ネコは突進)
         const at = f.t - su;
@@ -828,6 +1030,10 @@ function updateFighter(f, inp, o) {
         f.state = 'landing'; f.t = 0; f.landLen = 10;
       }
       break;
+    case 'locked':
+      if (!f.lock) { f.state = 'air'; f.t = 0; break; }
+      lockTick(f); decBuffers(f);
+      return;
     case 'grabbed':
       if (o.state !== 'holding') { f.state = 'air'; f.t = 0; }
       else { f.x = o.x + o.facing * (o.w / 2 + f.w / 2 - 6); f.y = o.y; f.vx = f.vy = f.kbx = f.kby = 0; f.facing = -o.facing; }
@@ -855,7 +1061,7 @@ function applyDamage(a, b, m, dir, isThrow) {
   b.grounded = false; b.y -= 1;
   b.vx = 0; b.vy = 0; b.ff = false; b.move = null; b.chg = 0;
   b.state = 'hitstun'; b.t = 0; b.stunLen = Math.max(8, Math.floor(kb * 1.75));
-  b.jumps = Math.max(b.jumps, 1); b.canUpB = true; b.canDodge = true;
+  b.jumps = Math.max(b.jumps, 1); b.canUpB = true; b.canDodge = true; b.spAir = false; b.sp = null; b.lock = null;
   b.flash = 6; b.pctShake = 14; b.facing = -dir; b.lastHitT = game.matchT; b.lastSuper = !!m.isSuper;
   const strong = m.kind === 'strong' || isThrow || kb > 14;
   game.hitstop = Math.min(18, Math.floor(3 + dmg * 0.45 + (kb > 16 ? 5 : 0)));
@@ -870,6 +1076,7 @@ function isIntangible(b) {
   if (b.state === 'spot') return b.t >= 2 && b.t <= 15;
   if (b.state === 'airdodge') return b.t >= 2 && b.t <= 20;
   if (b.state === 'attack' && b.move && b.move.super && b.t < startupOf(b, b.move)) return true; // 必殺技のため中は無敵
+  if (b.state === 'attack' && b.move && b.move.counter && b.sp && b.sp.cnt && b.sp.cnt.t <= 10) return true; // カウンター成功の瞬間は無敵
   return false;
 }
 function resolveHits() {
@@ -880,20 +1087,28 @@ function resolveHits() {
     if (isIntangible(b)) continue;
     if (!overlap(hb, hurtOf(b))) continue;
     if (a.move.grab && (!b.grounded || b.state === 'holding')) continue;
-    hits.push([a, b, hb, a.move]);
+    hits.push([a, b, hb, a.move, a.move.sp ? spHit(a, a.move) : null]);
   }
   // 相打ちは両方当たる(判定は同時)
-  for (const [a, b, hb, m0] of hits) {
+  for (const [a, b, hb, m0, sh] of hits) {
     if (!m0 || (m0.grab && a.state !== 'attack')) continue;
     a.hitIds.add(b.pi);
     let m = m0;
     if (m0.super) { const at = a.t - startupOf(a, m0); m = (at >= m0.finFrom || !m0.small) ? m0.fin : m0.small; }
+    if (m0.sp) { if (!sh) continue; m = sh.h; }
     if (m.grab) {
       if (b.state === 'attack' && b.move && b.move.grab && b.t >= startupOf(b, b.move)) continue;
       b.state = 'grabbed'; b.t = 0; b.move = null; a.state = 'holding'; a.t = 0; a.move = null;
       b.vx = b.vy = b.kbx = b.kby = 0; sfx('grab'); game.hitstop = 4; continue;
     }
-    if (b.state === 'shield' || b.state === 'shieldstun') { shieldHit(a, b, m, a.x, true); continue; }
+    // マグカップの湯気カウンター(つかみ・必殺技は受け止められない)
+    if (counterOn(b) && !m.isSuper) { triggerCounter(b, a, m); continue; }
+    if (b.state === 'shield' || b.state === 'shieldstun') {
+      shieldHit(a, b, m, a.x, true);
+      if (m.drill && a.sp) { a.sp.stop = true; a.t = Math.max(a.t, startupOf(a, m0) + m0.active); a.vx = -a.facing * 4; } // ドリルはガードされると止まって跳ね返る
+      continue;
+    }
+    if (m0.lockSup && m === m0.fin && a.state === 'attack' && a.move === m0) { if (armorHit(a, b, m)) continue; startLock(a, b, m0); continue; }
     if (m.tip) {
       // ハブラシ: 判定の先っぽ側だけに当たったら「先端」(強い)
       const near = Math.abs(hb.cx - a.x) - hb.w / 2, bNear = Math.abs(b.x - a.x) - b.w * 0.3;
@@ -903,8 +1118,9 @@ function resolveHits() {
     const dir = m.rel ? (Math.sign(b.x - a.x) || a.facing) : a.facing;
     applyDamage(a, b, m, dir, false);
     if (m.isSuper && a.supHit !== 1) { if (a.supHit === 2) a.stats.superBlocked--; a.supHit = 1; a.stats.superHits++; }
+    if (m.spec) { a.stats.spHits++; if (m.stun) b.stunLen = Math.max(b.stunLen, m.stun); }
     if (m.carry) { m.carry(a, b, dir); b.stunLen = Math.max(b.stunLen, 12); }
-    if (m.isSuper && m === m0.fin) { game.hitstop = Math.max(game.hitstop, 14); game.shake = Math.max(game.shake, 16); burst(b.x, b.y - b.h / 2, 30, '#ffd23d', 12); }
+    if (m.isSuper && m === m0.fin) superFinish(a, b);
   }
 }
 function shieldHit(a, b, m, srcX, melee) {
@@ -951,8 +1167,9 @@ function fireShot(f, lv, stored) {
 function spawnBean(f, lv, sup) {
   const hs = f.h / 58, x = f.x + f.facing * (f.w / 2 + 6), y = f.y - 30 * hs;
   let p;
-  if (sup === 'small') p = { r: 10, sp: 13, dmg: 1, base: 3, gr: 0, ang: 14, life: 60, kind: 'super', big: false, isSuper: true, noMeter: true, shieldMul: 0.7, carry: true, dy: rnd(-10, 10) };
-  else if (sup === 'fin') p = { r: 30, sp: 12, dmg: 8, base: 6.8, gr: 0.14, ang: 38, life: 70, kind: 'strong', big: true, isSuper: true, noMeter: true, fin: true, dy: 0 };
+  const SB = SUPERS.edamame;
+  if (sup === 'small') p = Object.assign({ r: 10, sp: 13, life: 60, kind: 'super', big: false, isSuper: true, noMeter: true, shieldMul: 0.7, carry: true, dy: rnd(-10, 10) }, SB.bean);
+  else if (sup === 'fin') p = Object.assign({ r: 32, sp: 12.5, life: 70, kind: 'strong', big: true, isSuper: true, noMeter: true, fin: true, finisher: true, dy: 0 }, SB.finBean);
   else { const b = beanStats(lv); p = Object.assign(b, { dy: 0 }); f.stats.shots++; }
   Object.assign(p, { air: !f.grounded, pi: f.pi, x, y: y + p.dy, vx: f.facing * p.sp, lv: sup ? (sup === 'fin' ? 99 : 0) : lv, t: 0, id: (game.projSeq = (game.projSeq || 0) + 1) });
   game.projs.push(p);
@@ -963,7 +1180,14 @@ function spawnBean(f, lv, sup) {
 function projBox(p) { return { x: p.x - p.r, y: p.y - p.r * 0.8, w: p.r * 2, h: p.r * 1.6, cx: p.x, cy: p.y }; }
 function updateProjs() {
   const fs = game.fighters, ps = game.projs;
-  for (const p of ps) { p.x += p.vx; p.t++; if (p.t > p.life || p.x < BLAST.x1 || p.x > BLAST.x2) p.dead = true; }
+  for (const p of ps) {
+    p.x += p.vx; p.t++; if (p.t > p.life || p.x < BLAST.x1 || p.x > BLAST.x2) p.dead = true;
+    if (p.g) { // 歯みがき粉: ゆるく落ちて、床に当たるとベチャッ
+      p.y += p.vy; p.vy += p.g;
+      if (p.vy > 0) for (const q of PLATS) if (p.x > q.x1 && p.x < q.x2 && p.y >= q.y - 4 && p.y - p.vy < q.y - 4) { p.dead = true; puff(p.x, q.y - 4, 7, '#e8fff6'); sfx('splat'); break; }
+      if (p.y > BLAST.y2) p.dead = true;
+    }
+  }
   // 豆どうし: 大きい方が残る(差が小さければ両方消える)
   for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
     const a = ps[i], b = ps[j];
@@ -980,17 +1204,19 @@ function updateProjs() {
     if (isIntangible(b) || !overlap(box, hurtOf(b))) continue;
     p.dead = true;
     const m = p, dir = Math.sign(p.vx) || a.facing;
+    if (counterOn(b) && !p.isSuper) { triggerCounter(b, a, m, p); continue; }
     if (b.state === 'shield' || b.state === 'shieldstun') { shieldHit(a, b, m, p.x - p.vx * 3, false); continue; }
     if (armorHit(a, b, m)) continue;
     applyDamage(a, b, m, dir, false);
-    if (!p.isSuper) a.stats.shotHits++;
+    if (p.paste) { b.slowT = p.slow; a.stats.pasteHits++; a.stats.spHits++; particles.push({ x: b.x, y: b.y - b.h - 26, vx: 0, vy: -1, life: 34, max: 34, size: 18, color: '#c9fbe9', type: 'text', text: 'ベタベタ!' }); }
+    else if (!p.isSuper) a.stats.shotHits++;
     if (m.isSuper && a.supHit !== 1) { if (a.supHit === 2) a.stats.superBlocked--; a.supHit = 1; a.stats.superHits++; }
     if (m.carry) { b.kbx = dir * 2.6; b.kby = -1.2; b.stunLen = Math.max(b.stunLen, 14); }
-    if (m.fin) { game.hitstop = Math.max(game.hitstop, 14); game.shake = Math.max(game.shake, 16); burst(b.x, b.y - b.h / 2, 30, '#ffd23d', 12); }
-    burst(p.x, p.y, p.big ? 12 : 5, '#c8f08a', 4);
+    if (m.fin) superFinish(a, b);
+    burst(p.x, p.y, p.big ? 12 : 5, p.paste ? '#e8fff6' : '#c8f08a', 4);
   }
   game.projs = ps.filter(p => !p.dead);
-  game.projHist.push(game.projs.map(p => ({ id: p.id, pi: p.pi, x: p.x, y: p.y, vx: p.vx, r: p.r, big: p.big, isSuper: !!p.isSuper })));
+  game.projHist.push(game.projs.map(p => ({ id: p.id, pi: p.pi, x: p.x, y: p.y, vx: p.vx, r: p.r, big: p.big, isSuper: !!p.isSuper, paste: !!p.paste })));
   if (game.projHist.length > 40) game.projHist.shift();
 }
 function checkBlast(f, o) {
@@ -1050,7 +1276,7 @@ function fxAdd(p) { if (FX.list.length >= fxCap()) FX.list.shift(); p.max = p.li
 function fxN(n) { return Math.max(1, Math.round(n * fxQ())); }
 function fxKick(dx, dy) { const k = fxMotion(); FX.kvx += dx * k; FX.kvy += dy * k; }
 function fxFlash(a, rgb) { const v = a * (REDUCED_MOTION ? 0.4 : 1); if (v > FX.flash) { FX.flash = v; FX.flashCol = rgb || '255,255,255'; } }
-function fxReset() { FX.list.length = 0; FX.kx = FX.ky = FX.kvx = FX.kvy = 0; FX.flash = 0; FX.vic = null; FX.st = [null, null]; FX.trails.clear(); }
+function fxReset() { FX.list.length = 0; FX.kx = FX.ky = FX.kvx = FX.kvy = 0; FX.flash = 0; FX.vic = null; FX.st = [null, null]; FX.trails.clear(); FX.koZoom = null; FX.bd = 0; }
 // --- 汎用パーツ ---
 function fxSparks(x, y, n, ang, spread, sp0, sp1, w, cols, life) {
   for (let i = 0; i < n; i++) { const a = ang + vrnd(-spread, spread), s = vrnd(sp0, sp1); fxAdd({ t: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 0.82, g: 0, w: vrnd(w * 0.6, w), color: cols[i % cols.length], life: Math.round(vrnd(life * 0.7, life)) }); }
@@ -1088,7 +1314,53 @@ function fxGuard(b, x, y, dmg) {
 }
 function fxArmor(b) { if (!fxLive) return; fxRing(b.x, b.y - b.h / 2, b.h * 0.5, b.h * 0.95, 6, '#ffb347', 10); fxKick(0, 2); }
 function fxKO(x, y, color) { if (!fxLive) return; fxFlash(0.35); fxRing(x, y, 20, 320, 14, '#ffffff', 22); const a = Math.atan2(cam.y - y, cam.x - x); fxKick(Math.cos(a) * 18, Math.sin(a) * 18); }
-function fxSuper(f) { if (!fxLive) return; fxFlash(0.3, '255,230,120'); fxRing(f.x, f.y - f.h / 2, 10, 150, 8, '#ffe680', 18); }
+const SUPER_COL = { neko: ['#ffb15c', '255,177,92'], ninjin: ['#ff7a1a', '255,122,26'], mug: ['#c8875a', '200,135,90'], brush: ['#7ff0dc', '127,240,220'], edamame: ['#a6e05a', '166,224,90'] };
+function fxSuper(f) {
+  if (!fxLive) return;
+  const c = SUPER_COL[f.c.id] || SUPER_COL.neko, cx = f.x, cy = f.y - f.h / 2;
+  fxFlash(0.45, '255,236,150'); fxRing(cx, cy, 10, 170, 9, '#ffe680', 20); fxRing(cx, cy, 6, 110, 6, c[0], 16);
+  fxSparks(cx, cy, fxN(26), 0, Math.PI, 6, 16, 4, ['#ffffff', '#ffe680', c[0]], 20);
+  fxKick(0, 6);
+}
+// 特技・必殺技の演出フック(見た目だけ)
+function fxCounter(b) {
+  if (!fxLive) return;
+  const cx = b.x, cy = b.y - b.h / 2;
+  fxFlash(0.22, '255,240,220'); fxRing(cx, cy, 10, 120, 8, '#ffffff', 14); fxRing(cx, cy, 6, 80, 5, '#ffb347', 12);
+  for (let i = 0; i < fxN(14); i++) fxAdd({ t: 'puff', x: cx + b.facing * vrnd(10, 60), y: cy + vrnd(-30, 30), vx: b.facing * vrnd(2, 7), vy: vrnd(-3, 0.5), drag: 0.9, g: -0.05, r0: 6, r1: vrnd(18, 30), color: '255,250,240', a: 0.75, life: Math.round(vrnd(18, 28)) });
+  fxKick(b.facing * 6, -2);
+}
+function fxMine(mn) {
+  if (!fxLive) return;
+  fxFlash(0.12, '216,255,138'); fxRing(mn.x, mn.y - 10, 6, 90, 7, '#e9ffc2', 14); fxRing(mn.x, mn.y, 8, 70, 4, 'rgba(216,255,138,0.9)', 14, 0.25);
+  fxSparks(mn.x, mn.y - 8, fxN(14), -Math.PI / 2, 1.1, 5, 13, 4, ['#ffffff', '#d8ff8a', '#86c94a'], 16);
+  for (let i = 0; i < fxN(6); i++) fxAdd({ t: 'dot', x: mn.x, y: mn.y - 8, vx: vrnd(-5, 5), vy: vrnd(-9, -3), drag: 0.97, g: 0.4, r: vrnd(3, 6), color: '#86c94a', life: 30 });
+  fxKick(0, -5);
+}
+function fxLockStart(a, b) {
+  if (!fxLive) return;
+  const ice = b.lock && b.lock.kind === 'ice', cx = b.x, cy = b.y - b.h / 2;
+  fxFlash(0.3, ice ? '200,255,245' : '255,220,170'); fxRing(cx, cy, 10, 130, 9, ice ? '#c9fbe9' : '#ffffff', 16);
+  if (ice) for (let i = 0; i < fxN(16); i++) { const ang = vrnd(0, 6.3); fxAdd({ t: 'spark', x: cx, y: cy, vx: Math.cos(ang) * vrnd(3, 9), vy: Math.sin(ang) * vrnd(3, 9), drag: 0.86, g: 0, w: 3, color: i % 2 ? '#ffffff' : '#9ff5dc', life: 18 }); }
+  fxKick(a.facing * 5, 0);
+}
+function fxLockTick(a, b) {
+  if (!fxLive) return;
+  fxAdd({ t: 'claw', x: b.x + vrnd(-10, 10), y: b.y - b.h * 0.55 + vrnd(-12, 12), vx: 0, vy: 0, drag: 1, g: 0, ang: vrnd(0, 6.3), r: vrnd(22, 34), color: '#ffffff', life: 10 });
+  fxSparks(b.x, b.y - b.h / 2, fxN(5), vrnd(0, 6.3), Math.PI, 4, 10, 3, ['#ffffff', '#ffb15c'], 10);
+  fxKick(vrnd(-3, 3), vrnd(-3, 3));
+}
+function fxSuperFin(a, b, ko) {
+  if (!fxLive) return;
+  const c = SUPER_COL[a.c.id] || SUPER_COL.neko, cx = b.x, cy = b.y - b.h / 2, ang = Math.atan2(b.kby, b.kbx || 0.001);
+  fxFlash(ko ? 0.75 : 0.5, ko ? '255,255,255' : c[1]);
+  fxRing(cx, cy, 14, ko ? 380 : 240, ko ? 16 : 11, '#ffffff', 24); fxRing(cx, cy, 10, ko ? 260 : 170, 9, c[0], 20);
+  fxAdd({ t: 'star', x: cx, y: cy, vx: 0, vy: 0, drag: 1, g: 0, r: ko ? 120 : 80, rot: vrnd(0, 6.3), n: 12, color: '#fff6a8', life: 12 });
+  fxSparks(cx, cy, fxN(ko ? 40 : 26), ang, 0.9, 8, 26, 6, ['#ffffff', '#fff1a0', c[0]], 26);
+  fxSparks(cx, cy, fxN(16), ang + Math.PI, 1.4, 4, 10, 4, ['#ffffff', c[0]], 16);
+  fxKick(Math.cos(ang) * 22, Math.sin(ang) * 22);
+  if (ko) FX.koZoom = { pi: b.pi, t: 0, max: 40 };
+}
 function fxShot(f, p) {
   if (!fxLive) return;
   const F = Math.sign(p.vx) || f.facing, big = p.big, k = clamp(p.r / 24, 0.3, 1.3);
@@ -1162,6 +1434,7 @@ function updateFx() {
     for (const id of FX.trails.keys()) if (!seen.has(id)) FX.trails.delete(id);
   }
   if (game.hitstop <= 0) FX.vic = null;
+  if (FX.koZoom && ++FX.koZoom.t > FX.koZoom.max) FX.koZoom = null;
   // カメラの「ドンッ」: バネで戻る(見た目のオフセットだけ)
   FX.kvx += -FX.kx * 0.32; FX.kvy += -FX.ky * 0.32; FX.kvx *= 0.62; FX.kvy *= 0.62; FX.kx += FX.kvx; FX.ky += FX.kvy;
   if (Math.abs(FX.kx) + Math.abs(FX.ky) + Math.abs(FX.kvx) + Math.abs(FX.kvy) < 0.05) FX.kx = FX.ky = FX.kvx = FX.kvy = 0;
@@ -1306,6 +1579,8 @@ const CPU_LV = [null,
     whiff: 0.9, oos: 0.9, footsie: 0.6, shieldGrab: 0.88, combo: 0.88, escape: 0.8, edgeguard: 0.72, smartSuper: 0.95, antiAir: 0.8, adapt: 1 }
 ];
 const CPU_MAX = CPU_LV.length - 1;
+// 特技: spUse = 自分の特技を使う積極さ・うまさ / spRespect = 相手の特技への対応(カウンターの構えに殴りかからない・地雷をよける・ドリルをガード)
+[[0.2, 0.08], [0.3, 0.22], [0.42, 0.4], [0.52, 0.55], [0.62, 0.7], [0.72, 0.82], [0.8, 0.92]].forEach(([u, r], i) => { CPU_LV[i + 1].spUse = u; CPU_LV[i + 1].spRespect = r; });
 const VKEYS = ['l', 'r', 'u', 'd', 'a', 's', 'g', 'x'];
 const HOLD = 1e9;
 const ri = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
@@ -1314,7 +1589,7 @@ function snapshot(f) {
   const m = f.move;
   return { x: f.x, y: f.y, vx: f.vx + f.kbx, vy: f.vy + f.kby, state: f.state, t: f.t, grounded: f.grounded, percent: f.percent,
     facing: f.facing, w: f.w, h: f.h, mid: m ? m.id : null, kind: m ? m.kind : null, su: m ? startupOf(f, m) : 0,
-    active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps, ll: f.landLen || 0 };
+    active: m ? m.active : 0, rec: m ? recOf(f, m) : 0, seq: f.atkSeq || 0, jumps: f.jumps, ll: f.landLen || 0, slow: f.slowT > 0 };
 }
 // キャラごとの戦い方(全レベル共通。うまさ=反応・精度はレベルのパラメータで決まる)
 const AI_STYLE = {
@@ -1337,6 +1612,7 @@ class CpuAI {
     // 上級者はキャラの長所を活かす: ハブラシはふわふわで対空に弱いので地上でリーチを活かす
     const me = game.fighters[pi]; this.S = AI_STYLE[me ? me.c.id : 'neko'] || AI_STYLE.neko; this.airK = this.S.air; this.ag = clamp(this.P.aggro + this.S.aggro, 0.2, 0.9); this.projSeen = {}; this.armorSeq = -1; this.prevPct = 0; this.ssUntil = 0;
     this.reactSeq = -1; this.punishSeq = -1; this.respawnWait = ri(15, 60); this.busyUntil = 0; this.moveDir = 0; this.edgeMargin = rnd(-10, 25) + (lv - 3) * 6;
+    this.mineSeen = {}; this.spCool = ri(60, 180); this.cntSeq = -1; this.myCntSeq = -1; this.drillSeq = -1; this.nekoSeq = -1;
   }
   sampleDelay() { const [m, sd] = this.P.react; return Math.max(this.P.minReact || 9, Math.round(m + gauss() * sd)); }
   dk(d) { return d < 0 ? 'l' : 'r'; }
@@ -1364,6 +1640,7 @@ class CpuAI {
       }
     }
     this.edgeSafety(f);
+    this.mineSafety(f);
     // キュー処理(同じキーは一度離してからでないと押せない=人間と同じ)
     for (let i = 0; i < this.queue.length; i++) {
       const q = this.queue[i];
@@ -1399,6 +1676,43 @@ class CpuAI {
     if (this.hold.l >= HOLD && f.x < STAGE.x1 + 26) this.hold.l = 0;
     if (this.hold.r >= HOLD && f.x > STAGE.x2 - 26) this.hold.r = 0;
   }
+  // 相手のまめ地雷: 歩いて踏みに行かない(見えてから=置かれて反応時間ぶんたってから)。跳びこえる/止まる。下手だと踏む
+  mineSafety(f) {
+    if (!game.mines || !game.mines.length || !f.grounded) return;
+    const dir = this.hold.r > 0 ? 1 : this.hold.l > 0 ? -1 : 0; if (!dir) return;
+    for (const mn of game.mines) {
+      if (mn.pi === this.pi || !mn.onGround || Math.abs(mn.y - f.y) > 4 || mn.t < this.delay) continue;
+      const ahead = (mn.x - f.x) * dir; if (ahead < 0 || ahead > MINE.w / 2 + f.w / 2 + 20 + Math.abs(f.vx) * 5) continue;
+      let act = this.mineSeen[mn.id];
+      if (act === undefined) act = this.mineSeen[mn.id] = Math.random() < this.P.spRespect ? (Math.random() < 0.6 ? 'hop' : 'stop') : 'none';
+      if (act === 'hop' && (f.state === 'run' || f.state === 'idle')) { this.tap('u', 3, 0); this.mineSeen[mn.id] = 'hopped'; }
+      else if (act === 'stop') { this.hold.l = this.hold.r = 0; this.moveDir = 0; this.queue = this.queue.filter(q => q.k !== 'l' && q.k !== 'r'); }
+    }
+  }
+  // 特技を使う(ゲージ満タンでない時の必殺ボタン)。どれも「意味のある場面」で、レベルが高いほど上手に
+  specialAI(f, o, v, d, adx, dy) {
+    const P = this.P, k = P.spUse || 0, id = f.c.id, ady = Math.abs(dy);
+    if (this.now < this.spCool || superReady(f) || (!f.grounded && f.spAir)) return false;
+    const opening = ['landing', 'stunned', 'shieldDrop'].includes(v.state) || (v.state === 'attack' && v.t >= v.su + v.active) || (v.state === 'helpless' && v.grounded);
+    let use = false, busy = 30;
+    if (id === 'neko') { // 中間距離から跳びこえて裏へ(ガードを固める相手・待っている相手に)
+      use = f.grounded && v.grounded && adx > 70 && adx < 175 && ady < 30 && v.mid !== 'special_mug' && Math.random() < k * (v.state === 'shield' ? 0.45 : opening ? 0.4 : 0.08); busy = 34;
+    } else if (id === 'ninjin') { // スキへのドリル突進。ガードしている相手にはやらない
+      use = f.grounded && adx > 80 && adx < 200 && ady < 30 && v.state !== 'shield' && v.mid !== 'special_mug' && Math.random() < k * (opening ? 0.55 : 0.05); busy = 48;
+    } else if (id === 'brush') { // 中〜遠距離で歯みがき粉(向かってくる相手には多め)
+      use = adx > 170 && adx < 470 && ady < 50 && v.state !== 'shield' && !game.projs.some(p => p.paste && p.pi === f.pi) && Math.random() < k * (Math.sign(v.vx) === -d && Math.abs(v.vx) > 2 ? 0.5 : 0.2); busy = 34;
+    } else if (id === 'edamame') { // 地雷がない時、相手が遠ければ足もと(相手との間)に置く
+      use = f.grounded && !game.mines.some(m => m.pi === f.pi) && adx > 170 && adx < 560 && Math.random() < k * 0.2; busy = 28;
+    } else if (id === 'mug') { // 読みの先置きカウンター(よく攻撃してくる相手が目の前)。基本は react() で見てから
+      const tot = this.seen.shield + this.seen.attack + this.seen.grab;
+      use = f.grounded && adx < 120 && ady < 40 && Math.random() < k * 0.2 * (this.seen.attack / tot); busy = 50;
+    }
+    if (!use) return false;
+    this.releaseAll(); this.hold.g = 0;
+    if (f.facing !== d) this.tap(this.dk(d), 3, 0);
+    this.tap('x', 5, 1); this.busy(busy); this.spCool = this.now + Math.round(ri(40, 100) * (1.3 - k));
+    return true;
+  }
   // 飛んでくる豆: 見えた位置(反応時間ぶん前)から到達を見積もってガード/ジャンプで越える/空中回避
   // 飛んでくる豆が n フレーム以内に届くか(反応時間ぶん前の景色で判断)
   beanSoon(f, n) {
@@ -1425,6 +1739,8 @@ class CpuAI {
       const tArr = realD / Math.abs(p.vx);
       if (f.grounded && canAct) {
         this.releaseAll();
+        // マグカップ: 豆を湯気カウンターで受け止める(ときどき)
+        if (f.c.id === 'mug' && !superReady(f) && f.state !== 'shield' && tArr > 5 && tArr < 24 && Math.random() < (this.P.spUse || 0) * 0.35) { const w0 = Math.max(0, Math.round(tArr) - ri(6, 12)); this.tap('x', 5, w0); this.busy(w0 + 36); return true; }
         // ハブラシ: ブラシの先で豆をはらい落とす(タイミングを合わせて弱攻撃)
         if (this.S.tipSpace && f.facing === -dir && Math.random() < this.S.tipSpace * (0.5 + 0.5 * this.P.read)) {
           const m = f.c.mv.jab, reachX = m.box.x + m.box.w / 2 + p.r, relNow = rel - Math.abs(p.vx) * this.delay;
@@ -1446,6 +1762,35 @@ class CpuAI {
     const canAct = f.grounded && (f.state === 'idle' || f.state === 'run' || f.state === 'shield' || f.state === 'landing');
     if (this.now % 300 === 0) this.projSeen = {};
     if (game.projs && game.projs.length && this.projDefense(f, canAct)) return;
+    // --- 相手の特技への対応(見えるのは反応時間ぶん前の姿) ---
+    const P = this.P, live = v.state === 'attack';
+    // マグカップの湯気カウンター: 構えを見たら殴りかからない。近ければつかむ(つかみはカウンターに勝つ)
+    if (live && v.mid === 'special_mug' && v.t >= v.su && v.t < v.su + v.active && v.seq !== this.cntSeq) {
+      this.cntSeq = v.seq;
+      if (Math.random() < P.spRespect) {
+        this.releaseAll(); this.hold.g = 0;
+        const left = v.su + v.active - v.t - this.delay, grabR = reachOf(f, 'grab', v.w / 2);
+        if (canAct && f.state !== 'shield' && adx < grabR + 30 && left > 6 && Math.random() < 0.3 + 0.6 * P.read) { const tr = Math.max(0, adx - grabR + 4) / (f.st.run * 0.85); this.go(f, dx > 0 ? 1 : -1, tr, 'grab'); this.busy(Math.round(tr) + 30); }
+        else { this.setMove(0); this.busy(Math.max(6, left + ri(2, 8))); }
+        return;
+      }
+    }
+    // ニンジンのドリルが向かってくる → ガード(上手なら跳んでかわす)
+    if (live && v.mid === 'special_ninjin' && v.t < v.su + 14 && v.seq !== this.drillSeq && canAct && (f.x - v.x) * v.facing > 0 && adx < 300 && Math.abs(v.y - f.y) < 60) {
+      this.drillSeq = v.seq;
+      if (Math.random() < P.guard * (0.4 + 0.6 * P.spRespect)) { this.releaseAll(); if (Math.random() < 0.3 * P.spRespect) this.tap('u', ri(8, 11), 0); else { this.hold.g = 0; this.tap('g', ri(22, 30), 0); } this.busy(24); return; }
+    }
+    // ネコのねこだまし(跳びこえて裏から) → その場でガード
+    if (live && v.mid === 'special_neko' && v.seq !== this.nekoSeq && canAct && adx < 200 && Math.abs(v.y - f.y) < 90) {
+      this.nekoSeq = v.seq;
+      if (Math.random() < P.guard * (0.3 + 0.6 * P.spRespect)) { this.releaseAll(); this.hold.g = 0; this.tap('g', ri(18, 26), 0); this.busy(20); return; }
+    }
+    // マグカップ: 相手の攻撃の出がかりを見て湯気カウンター(判定が出る直前に構える)
+    if (f.c.id === 'mug' && canAct && f.state !== 'shield' && !superReady(f) && live && v.t < v.su && v.kind !== 'super' && v.kind !== 'grab' && v.mid !== 'grab' && v.seq !== this.myCntSeq && adx < 190 && Math.abs(v.y - f.y) < 80) {
+      this.myCntSeq = v.seq;
+      const real = v.su - v.t - this.delay;
+      if (real >= 4 && Math.random() < (P.spUse || 0) * 0.7) { this.releaseAll(); const wait = Math.max(0, real - 3 - ri(2, 10)); this.tap('x', 5, wait); this.busy(wait + 40); return; }
+    }
     // マグカップ: 相手の弱い攻撃が来るのを見たら、アーマー付きスマッシュで押し切る
     if (this.S.armor && canAct && f.state !== 'shield' && v.state === 'attack' && v.t < v.su && v.kind === 'light' && v.seq !== this.armorSeq && adx < reachOf(f, 'fsmash', v.w / 2) + 10 && Math.abs(v.y - f.y) < 50) {
       this.armorSeq = v.seq;
@@ -1581,6 +1926,8 @@ class CpuAI {
     const ep = this.recEp;
     if (ep.err && this.now - ep.start < ep.late) return;
     if (f.jumps > 0 && f.vy > -2 && below > -40 - rnd(0, 60)) { this.tap('u', ri(6, 10), ri(0, 2)); return; }
+    // ニンジン: ジャンプを使い切ったら、ドリルで横に進んでから復帰技(ステージの高さあたりで)
+    if (f.c.id === 'ninjin' && outside && !f.spAir && !superReady(f) && f.jumps === 0 && outX > 110 && below > -130 && below < 40 && Math.random() < 0.3 + 0.7 * (this.P.spUse || 0)) { this.setMove(-side); this.tap('x', 5, 0); this.busy(12); return; }
     if (outside && f.jumps === 0 && f.canUpB && f.vy > -1 && (below > -10 - rnd(0, 40) || outX > 170)) {
       this.hold.u = 0; this.tap('u', ri(8, 12), 0); this.tap('s', ri(4, 7), ri(1, 3)); this.busy(10);
     }
@@ -1676,6 +2023,17 @@ class CpuAI {
     }
     // 必殺技(ゲージ満タン): 当たりそうな時に使う。わざと温存したり、焦って無駄撃ちしたりもする
     if (f.grounded && superReady(f) && this.superAI(f, v, d, adx, dy)) return;
+    // 相手がカウンターの構え中 → 殴らない(近ければつかむ)
+    if (v.mid === 'special_mug' && v.state === 'attack' && v.t < v.su + v.active && !mistake && Math.random() < P.spRespect) { this.hold.g = 0; if (f.grounded && adx < grabR + 10) { this.go(f, d, 0, 'grab'); this.busy(28); } else this.setMove(0); return; }
+    // 相手の地雷が近くにあって相手が遠い → 攻撃で壊しておく(上級ほど)
+    if (f.grounded && game.mines.length && adx > 200 && !mistake) {
+      const mn = game.mines.find(m => m.pi !== this.pi && m.onGround && m.t > this.delay && Math.abs(m.y - f.y) < 4 && Math.abs(m.x - f.x) < jabR * 0.9 && Math.abs(m.x - f.x) > 8);
+      if (mn && Math.random() < P.spRespect * 0.5) { this.go(f, Math.sign(mn.x - f.x), 0, 'jab'); this.busy(16); return; }
+    }
+    // 特技
+    if (this.specialAI(f, o, v, d, adx, dy)) return;
+    // 歯みがき粉で足が遅くなった相手には、逃げられないうちに攻めこむ
+    if (v.slow && f.grounded && v.grounded && !mistake && adx < smashR + 90 && adx > jabR && Math.random() < 0.3 + 0.5 * P.read) { this.hold.g = 0; if (adx > smashR - 6) { this.setMove(d); this.busy(6); } else { this.go(f, d, 0, 'fsmash'); this.busy(36); } return; }
     // [Lv4〜] ふっとんだ相手への追撃
     if (P.combo && v.state === 'hitstun' && !mistake && Math.random() < P.combo && this.comboTry(f, v, adx, dy)) return;
     // 空中
@@ -1867,6 +2225,7 @@ function tickMatch() {
     return;
   }
   game.matchT++;
+  if (game.slowmo > 0) game.slowmo--;
   for (let i = 0; i < 2; i++) { const h = game.hist[i]; h.push(snapshot(fs[i])); if (h.length > 90) h.shift(); }
   if (game.countdown <= 0) for (let i = 0; i < 2; i++) if (game.ais[i]) game.ais[i].update(fs[i], fs[1 - i]);
   const inputs = [readInput(0), readInput(1)];
@@ -1900,6 +2259,7 @@ function tickMatch() {
   }
   resolveHits();
   updateProjs();
+  updateMines();
   checkBlast(a, b); checkBlast(b, a);
   updateCam();
 }
@@ -2312,22 +2672,28 @@ function drawFighter(f) {
   if (f.state === 'spot') { sx = 0.8; }
   if (f.state === 'attack' && m && m.kind === 'strong' && f.t < su) { rot = -f.facing * 0.12; }
   if (f.state === 'attack' && m && m.id === 'recover') rot = (f.t * 0.6) * f.facing;
+  if (f.state === 'attack' && m && m.id === 'special_neko' && f.t >= su && !f.grounded) rot = Math.min(1, (f.t - su) / 18) * Math.PI * 2 * f.facing; // ねこだまし: くるっと宙返り
+  if (f.state === 'attack' && m && m.id === 'special_ninjin' && f.t >= su && f.t < su + m.active && !(f.sp && f.sp.stop)) { rot = -f.facing * Math.PI / 2; sy *= 1 + 0.06 * Math.sin(f.t * 1.7); } // ドリル: 先っぽを前に
+  if (f.state === 'locked') { if (f.lock && f.lock.kind === 'claw') rot = Math.sin(f.t * 1.3) * 0.18; else { sx *= 1.03; sy *= 0.98; } }
   const bp = fxBodyPose(f, m, su); sx *= bp.sx; sy *= bp.sy; rot += bp.rot; if (bp.ox) ctx.translate(bp.ox, 0);
   if (rot) { ctx.translate(0, -f.h / 2); ctx.rotate(rot); ctx.translate(0, f.h / 2); }
   ctx.scale(sx, sy);
   const charging = m && f.state === 'attack' && (m.kind === 'strong' || m.super) && f.t < su && (f.t >> 2) % 2 === 0;
   let pose = 'idle';
-  if (['hitstun', 'stunned', 'grabbed'].includes(f.state)) pose = 'hurt';
-  else if (f.state === 'shield' || f.state === 'shieldstun') pose = 'guard';
+  if (['hitstun', 'stunned', 'grabbed', 'locked'].includes(f.state)) pose = 'hurt';
+  else if (f.state === 'shield' || f.state === 'shieldstun' || (f.state === 'attack' && m && m.counter && !(f.sp && f.sp.cnt) && f.t < su + m.active)) pose = 'guard';
   else if (f.state === 'attack' && m) pose = ((m.kind === 'strong' || m.super) && f.t < su) ? 'windup' : (f.t >= su && f.t < su + m.active + 3 ? 'attack' : 'idle');
   else if (f.state === 'holding') pose = 'attack';
   else if (f.state === 'run') pose = 'run';
   drawCharBody(f.c, f.state === 'helpless' ? shade(f.color, -50) : f.color, f.facing,
     { t: f.anim, pose, flash: f.flash > 3 || charging });
   ctx.restore();
+  if (f.slowT > 0) drawSlowed(f);
+  if (f.state === 'locked' && f.lock) drawLocked(f);
   // 攻撃判定の表示(キャラらしいエフェクト)
   const hb = activeHitbox(f);
-  if (hb && !m.super) drawAttackFx(f, hb, m);
+  if (hb && !m.super && !m.sp) drawAttackFx(f, hb, m);
+  if (f.state === 'attack' && m && m.sp) drawSpecialFx(f, m, su);
   fxDrawSwing(f);
   // シールド
   if (f.state === 'shield' || f.state === 'shieldstun') {
@@ -2362,6 +2728,124 @@ function drawFighter(f) {
   text((game.ctrl[f.pi] ? 'CP' : 'P') + (f.pi + 1), f.x, ty - 10, 15, P_COLORS[f.pi], 'center', '900', 4);
 }
 
+// ===== 特技の演出 =====
+function drawSpecialFx(f, m, su) {
+  const at = f.t - su, id = f.c.id, F = f.facing, cy = f.y - f.h / 2, S = f.sp || {};
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (at < 0) { // 出がかりを見やすく(白い輪がしぼむ)
+    const p = f.t / Math.max(1, su);
+    ctx.strokeStyle = 'rgba(210,240,255,' + (0.3 + 0.5 * p) + ')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(f.x, cy, f.h * (0.95 - 0.35 * p), 0, Math.PI * 2); ctx.stroke();
+  }
+  if (id === 'neko') {
+    if (at >= 0 && at <= 4) { // パンッ!(猫だまし)
+      const x = f.x + F * 30, y = f.y - f.h * 0.62, r = 14 + at * 9;
+      ctx.fillStyle = 'rgba(255,246,168,' + (0.9 - at * 0.18) + ')'; ctx.beginPath();
+      for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, rr2 = i % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(a) * rr2, y + Math.sin(a) * rr2); } ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff3e0'; ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 2;
+      for (const k of [-1, 1]) { ctx.beginPath(); ctx.ellipse(x, y + k * 7, 8, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+      text('パンッ!', x + F * 10, y - 30, 20, '#ffffff', 'center', '900', 5);
+    }
+    if (at >= 10 && at <= 21) { // 裏からのひっかき(下向きの爪あと)
+      const k = (at - 10) / 11;
+      for (let i = -1; i <= 1; i++) { const x = f.x + i * 12 + F * 10; ctx.strokeStyle = 'rgba(255,143,177,0.7)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x - F * 20, f.y - f.h * 0.9); ctx.quadraticCurveTo(x + F * 18, f.y - f.h * 0.5, x + F * 6 * (1 - k), f.y - 4); ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.stroke(); }
+    }
+  } else if (id === 'ninjin') {
+    if (at >= 0 && at < m.active && !S.stop) { // ドリル: 回るらせん+うしろの風
+      const x0 = f.x + F * f.w * 0.45, y0 = f.y - f.h * 0.48, L = 46, R = 22;
+      ctx.fillStyle = '#ff9a3c'; ctx.strokeStyle = '#a84a00'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(x0, y0 - R); ctx.lineTo(x0 + F * L, y0); ctx.lineTo(x0, y0 + R); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) { const ph = ((at * 0.35 + i / 3) % 1), xx = x0 + F * L * ph, hh = R * (1 - ph); ctx.beginPath(); ctx.moveTo(xx, y0 - hh); ctx.lineTo(xx + F * 9, y0 + hh); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 3;
+      for (let i = 0; i < 4; i++) { const yy = y0 - 18 + i * 12, ln = 40 + ((at * 13 + i * 23) % 50); ctx.beginPath(); ctx.moveTo(f.x - F * 24, yy); ctx.lineTo(f.x - F * (24 + ln), yy); ctx.stroke(); }
+    }
+  } else if (id === 'mug') {
+    if (S.cnt) { // カウンター成功: 前に湯気の爆発
+      const k = Math.min(1, S.cnt.t / 8), bx = f.x + F * 70 * k, by = f.y - f.h * 0.55;
+      for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2 + S.cnt.t * 0.15, r = (30 + 50 * k) * (0.6 + (i % 3) * 0.2); ctx.fillStyle = i % 2 ? 'rgba(255,255,255,' + (0.85 - 0.4 * k) + ')' : 'rgba(255,226,184,' + (0.8 - 0.4 * k) + ')'; ctx.beginPath(); ctx.arc(bx + Math.cos(a) * r * 0.9, by + Math.sin(a) * r * 0.6, 16 + 14 * k, 0, Math.PI * 2); ctx.fill(); }
+    } else if (at >= 0 && at < m.active) { // 構え: まわる湯気+オレンジの輪(=今は殴っちゃダメ)
+      const p = 0.5 + 0.5 * Math.sin(f.t * 0.5);
+      ctx.strokeStyle = 'rgba(255,179,71,' + (0.55 + 0.35 * p) + ')'; ctx.lineWidth = 4; ctx.setLineDash([10, 7]); ctx.lineDashOffset = -f.t * 2;
+      ctx.beginPath(); ctx.ellipse(f.x, cy, f.w * 0.95, f.h * 0.72, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      for (let i = 0; i < 5; i++) { const a = f.t * 0.18 + i * 1.26; ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * f.w * 0.9, cy + Math.sin(a) * f.h * 0.62, 6 + (i % 2) * 3, 0, Math.PI * 2); ctx.fill(); }
+      text('構え', f.x, f.y - f.h - 40, 15, '#ffb347', 'center', '900', 4);
+    }
+  } else if (at >= -4 && at <= 3) { // ハブラシ/エダマメ: 出る瞬間の小さな光
+    const x = f.x + F * (f.w / 2 + 12), y = id === 'brush' ? f.y - 46 * f.h / 66 : f.y - 8;
+    ctx.fillStyle = id === 'brush' ? 'rgba(232,255,246,0.8)' : 'rgba(216,255,138,0.8)'; ctx.beginPath(); ctx.arc(x, y, 8 + Math.max(0, at) * 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+// 歯みがき粉で足が遅い(ベタベタのしずく)
+function drawSlowed(f) {
+  ctx.save();
+  for (let i = 0; i < 4; i++) { const x = f.x + (i - 1.5) * f.w * 0.28, drip = (f.anim * 0.6 + i * 9) % 18; ctx.fillStyle = 'rgba(232,255,246,0.9)'; ctx.beginPath(); ctx.ellipse(x, f.y - 6 - (i % 2) * f.h * 0.3, 7, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(x, f.y - 2 - (i % 2) * f.h * 0.3 + drip * 0.4, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.strokeStyle = 'rgba(46,196,182,0.8)'; ctx.lineWidth = 2; for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.moveTo(f.x - f.w * 0.4, f.y - 4 - i * 6); ctx.lineTo(f.x + f.w * 0.4, f.y - 4 - i * 6); ctx.stroke(); }
+  if ((f.slowT >> 3) % 4 === 0) text('ベタベタ', f.x, f.y + 16, 12, '#c9fbe9', 'center', '900', 3);
+  ctx.restore();
+}
+// 必殺技でつかまった/凍った相手
+function drawLocked(f) {
+  const L = f.lock, cy = f.y - f.h / 2;
+  ctx.save();
+  if (L.kind === 'ice') {
+    const g = ctx.createLinearGradient(f.x - f.w, f.y - f.h, f.x + f.w, f.y);
+    g.addColorStop(0, 'rgba(220,255,250,0.55)'); g.addColorStop(1, 'rgba(110,220,230,0.45)');
+    ctx.fillStyle = g; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(f.x - f.w * 0.8, f.y + 2); ctx.lineTo(f.x - f.w * 0.95, cy); ctx.lineTo(f.x - f.w * 0.5, f.y - f.h - 12); ctx.lineTo(f.x + f.w * 0.55, f.y - f.h - 6); ctx.lineTo(f.x + f.w * 0.95, cy - 6); ctx.lineTo(f.x + f.w * 0.8, f.y + 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f.x - f.w * 0.4, f.y - f.h * 0.8); ctx.lineTo(f.x - f.w * 0.1, f.y - f.h * 0.3); ctx.stroke();
+    const k = f.t / L.max; if (k > 0.6) { ctx.strokeStyle = 'rgba(255,255,255,' + (k - 0.4) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(f.x, f.y - f.h); ctx.lineTo(f.x + 6, cy); ctx.lineTo(f.x - 4, f.y - 10); ctx.stroke(); } // ひび
+    text('カチコチ!', f.x, f.y - f.h - 30, 18, '#c9fbe9', 'center', '900', 5);
+  } else {
+    for (let i = 0; i < 3; i++) { const a = f.t * 0.7 + i * 2.1, r = f.h * 0.55; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(f.x + Math.cos(a) * r, cy + Math.sin(a) * r); ctx.lineTo(f.x - Math.cos(a) * r, cy - Math.sin(a) * r); ctx.stroke(); ctx.strokeStyle = 'rgba(255,177,92,0.7)'; ctx.lineWidth = 2; ctx.stroke(); }
+    text('ニャニャニャ!', f.x, f.y - f.h - 34, 20, '#ffb15c', 'center', '900', 5);
+  }
+  ctx.restore();
+}
+function drawPaste(p) {
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
+  ctx.fillStyle = 'rgba(232,255,246,0.35)'; ctx.beginPath(); ctx.ellipse(-p.r * 1.4, 0, p.r * 1.6, p.r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f4fffb'; ctx.strokeStyle = '#2ec4b6'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.ellipse(0, 0, p.r * 1.25, p.r * 0.85, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#2ec4b6'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-p.r, -p.r * 0.25); ctx.quadraticCurveTo(0, -p.r * 0.6, p.r, -p.r * 0.2); ctx.stroke();
+  ctx.strokeStyle = '#ff7eb6'; ctx.beginPath(); ctx.moveTo(-p.r, p.r * 0.3); ctx.quadraticCurveTo(0, 0, p.r, p.r * 0.25); ctx.stroke();
+  ctx.restore();
+}
+function drawMines() {
+  for (const mn of game.mines) {
+    const armed = mn.onGround && mn.t >= MINE.arm, blink = armed && ((mn.t - MINE.arm) % 30) < 6;
+    ctx.save(); ctx.translate(mn.x, mn.y); ctx.globalAlpha = armed ? 1 : 0.55 + 0.3 * Math.sin(mn.t * 0.5);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(0, 1, 20, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#86c94a'; ctx.strokeStyle = '#3f7a22'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.ellipse(0, -7, 18, 9, 0, Math.PI, 0); ctx.lineTo(18, -1); ctx.lineTo(-18, -1); ctx.closePath(); ctx.fill(); ctx.stroke();
+    for (const k of [-8, 0, 8]) { ctx.fillStyle = '#b6ec7a'; ctx.beginPath(); ctx.arc(k, -9, 4.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = P_COLORS[mn.pi]; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(18, 0); ctx.stroke();
+    ctx.fillStyle = blink ? '#ff4d5e' : armed ? '#7a1f2a' : '#666'; ctx.beginPath(); ctx.arc(0, -17, 4, 0, Math.PI * 2); ctx.fill();
+    if (blink) { ctx.fillStyle = 'rgba(255,77,94,0.35)'; ctx.beginPath(); ctx.arc(0, -17, 10, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+// 必殺技中の背景: 暗くしてキャラの色に染め、使った本人に向かう集中線
+function drawSuperBackdrop() {
+  let f = null;
+  for (const g of game.fighters) if (g.state === 'attack' && g.move && g.move.super) f = g;
+  for (const g of game.fighters) if (g.state === 'locked' && g.lock) f = game.fighters[g.lock.by];
+  const tgt = f ? 1 : 0; FX.bd = (FX.bd || 0) + (tgt - (FX.bd || 0)) * (f ? 0.22 : 0.07); if (f) FX.bdPi = f.pi;
+  const k = FX.bd; if (k < 0.02) return;
+  const s = game.fighters[FX.bdPi || 0], c = SUPER_COL[s.c.id] || SUPER_COL.neko;
+  const sx = (s.x - cam.x) * cam.z + W / 2, sy = (s.y - s.h / 2 - cam.y) * cam.z + H / 2;
+  ctx.save(); ctx.setTransform(baseTf, 0, 0, baseTf, baseX, baseY);
+  fullFill('rgba(6,4,22,' + (0.55 * k) + ')');
+  const g = ctx.createRadialGradient(sx, sy, 20, sx, sy, Math.max(W, H) * 0.8);
+  g.addColorStop(0, 'rgba(' + c[1] + ',' + (0.45 * k) + ')'); g.addColorStop(0.5, 'rgba(' + c[1] + ',' + (0.16 * k) + ')'); g.addColorStop(1, 'rgba(' + c[1] + ',0)');
+  fullFill(g);
+  const n = game.mobile ? 14 : 26, R0 = 170, R1 = Math.max(W, H) * 1.1;
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.1 * k) + ')'; ctx.beginPath();
+  for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + (frameCount % 64) * 0.004 + Math.sin(i * 7.1) * 0.08, da = 0.018 + 0.012 * ((i * 37) % 3); ctx.moveTo(sx + Math.cos(a) * R0, sy + Math.sin(a) * R0); ctx.lineTo(sx + Math.cos(a - da) * R1, sy + Math.sin(a - da) * R1); ctx.lineTo(sx + Math.cos(a + da) * R1, sy + Math.sin(a + da) * R1); ctx.closePath(); }
+  ctx.fill();
+  ctx.restore();
+}
 // ===== 必殺技の演出 =====
 function drawSuperAura(f) {
   if (f.state === 'dead' || !superReady(f)) return;
@@ -2459,27 +2943,43 @@ function drawSuperFx(f) {
   ctx.restore();
 }
 function drawCutIn(sf) {
-  const f = game.fighters[sf.pi], t = sf.t, col = P_COLORS[sf.pi];
-  if (t < 8) fullFill('rgba(255,255,255,' + (0.7 * (1 - t / 8)) + ')');
-  if (t > 40) return;
-  const inK = Math.min(1, t / 7), outK = t > 32 ? (t - 32) / 8 : 0, dir = sf.pi === 0 ? 1 : -1;
-  const off = (1 - inK) * 900 * -dir + outK * 900 * dir;
-  ctx.save(); ctx.globalAlpha = 1 - outK * 0.6;
+  const f = game.fighters[sf.pi], t = sf.t, col = P_COLORS[sf.pi], c = SUPER_COL[f.c.id] || SUPER_COL.neko;
+  if (t < 8) fullFill('rgba(255,255,255,' + (0.8 * (1 - t / 8)) + ')');
+  if (t > 46) return;
+  const inK = Math.min(1, t / 6), e = 1 - Math.pow(1 - inK, 3), outK = t > 38 ? (t - 38) / 8 : 0, dir = sf.pi === 0 ? 1 : -1;
+  const off = (1 - e) * 1000 * -dir + outK * 1000 * dir;
+  ctx.save(); ctx.globalAlpha = 1 - outK * 0.5;
   ctx.translate(off, 0);
-  const y0 = 170, h = 150;
-  ctx.fillStyle = 'rgba(10,8,30,0.85)';
-  ctx.beginPath(); ctx.moveTo(VX0, y0 + 20); ctx.lineTo(VX1, y0 - 20); ctx.lineTo(VX1, y0 + h - 20); ctx.lineTo(VX0, y0 + h + 20); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(VX0, y0 + 14); ctx.lineTo(VX1, y0 - 26); ctx.lineTo(VX1, y0 - 18); ctx.lineTo(VX0, y0 + 22); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(VX0, y0 + h + 14); ctx.lineTo(VX1, y0 + h - 26); ctx.lineTo(VX1, y0 + h - 18); ctx.lineTo(VX0, y0 + h + 22); ctx.fill();
-  // 集中線
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 3;
-  for (let i = 0; i < 14; i++) { const yy = y0 + 10 + i * 10; ctx.beginPath(); ctx.moveTo(VX0 + ((i * 97 + t * 40) % 600), yy); ctx.lineTo(VX0 + ((i * 97 + t * 40) % 600) + 160, yy); ctx.stroke(); }
-  const px = sf.pi === 0 ? 300 : 980;
-  ctx.save(); ctx.beginPath(); ctx.rect(VX0, y0 - 30, VX1 - VX0, h + 60); ctx.clip();
-  ctx.translate(px, y0 + h + 30); ctx.scale(2.6, 2.6); drawCharBody(f.c, f.color, dir, { t: frameCount, pose: 'attack' }); ctx.restore();
-  const tx = sf.pi === 0 ? 470 : 810;
-  text('必殺技!', tx, y0 + 34, 26, '#ffd23d', sf.pi === 0 ? 'left' : 'right', '900', 6);
-  text(sf.name, tx, y0 + 88, 60, '#ffffff', sf.pi === 0 ? 'left' : 'right', '900', 10);
+  const y0 = 160, h = 170;
+  const band = () => { ctx.beginPath(); ctx.moveTo(VX0, y0 + 22); ctx.lineTo(VX1, y0 - 22); ctx.lineTo(VX1, y0 + h - 22); ctx.lineTo(VX0, y0 + h + 22); ctx.closePath(); };
+  // 帯: キャラ色 → 夜の色のグラデーション
+  const g = ctx.createLinearGradient(VX0, 0, VX1, 0);
+  if (dir > 0) { g.addColorStop(0, hexA(c[0], 0.97)); g.addColorStop(0.42, 'rgba(24,14,46,0.94)'); g.addColorStop(1, 'rgba(10,8,30,0.9)'); }
+  else { g.addColorStop(0, 'rgba(10,8,30,0.9)'); g.addColorStop(0.58, 'rgba(24,14,46,0.94)'); g.addColorStop(1, hexA(c[0], 0.97)); }
+  ctx.fillStyle = g; band(); ctx.fill();
+  ctx.save(); band(); ctx.clip();
+  // 似顔絵のうしろの放射光
+  const px = sf.pi === 0 ? 290 : 990, pcy = y0 + h / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.beginPath();
+  for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2 + t * 0.03 * dir; ctx.moveTo(px, pcy); ctx.lineTo(px + Math.cos(a - 0.09) * 400, pcy + Math.sin(a - 0.09) * 400); ctx.lineTo(px + Math.cos(a + 0.09) * 400, pcy + Math.sin(a + 0.09) * 400); ctx.closePath(); }
+  ctx.fill();
+  // 流れる集中線
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 16; i++) { const yy = y0 - 10 + i * 13, xx = VX0 + ((i * 97 + t * 60) % 900) * 1.6; ctx.beginPath(); ctx.moveTo(dir > 0 ? xx : VX1 - (xx - VX0), yy); ctx.lineTo(dir > 0 ? xx + 200 : VX1 - (xx - VX0) - 200, yy); ctx.stroke(); }
+  // 似顔絵(大きく。少しずつ寄る)
+  ctx.save(); ctx.translate(px, y0 + h + 44); const sc = 2.9 + 0.35 * Math.min(1, t / 40); ctx.scale(sc, sc); drawCharBody(f.c, f.color, dir, { t: frameCount, pose: 'attack' }); ctx.restore();
+  ctx.restore();
+  // ふちの金ライン+プレイヤー色ライン
+  ctx.fillStyle = '#ffd23d'; ctx.beginPath(); ctx.moveTo(VX0, y0 + 14); ctx.lineTo(VX1, y0 - 30); ctx.lineTo(VX1, y0 - 22); ctx.lineTo(VX0, y0 + 22); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(VX0, y0 + h + 14); ctx.lineTo(VX1, y0 + h - 30); ctx.lineTo(VX1, y0 + h - 22); ctx.lineTo(VX0, y0 + h + 22); ctx.fill();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(VX0, y0 + h + 24); ctx.lineTo(VX1, y0 + h - 20); ctx.lineTo(VX1, y0 + h - 14); ctx.lineTo(VX0, y0 + h + 30); ctx.fill();
+  // 名前の帯
+  const tx = sf.pi === 0 ? 470 : 810, al = sf.pi === 0 ? 'left' : 'right', pop = 1 + 0.25 * Math.max(0, 1 - Math.abs(t - 9) / 5);
+  text('必殺技!', tx, y0 + 40, 28, '#ffd23d', al, '900', 6);
+  ctx.save(); ctx.translate(tx, y0 + 100); ctx.scale(pop, pop);
+  text(sf.name, 0, 0, 62, '#ffffff', al, '900', 12);
+  ctx.restore();
+  text(f.c.name, tx + dir * 4, y0 + 146, 18, hexA(c[0], 1), al, '900', 5);
   ctx.restore();
 }
 function drawBackground(parallax) {
@@ -2568,9 +3068,9 @@ function drawHUD() {
     }
     if (full) {
       ctx.strokeStyle = 'rgba(255,240,140,' + (0.5 + 0.5 * Math.sin(frameCount * 0.25)) + ')'; ctx.lineWidth = 3; rr(gx - 3, gy - 9, gw + 6, 18, 9); ctx.stroke();
-      const key = game.ctrl[i] ? '' : game.mobile && i === 0 ? '「必殺」' : (i === 0 ? 'R' : 'L');
+      const key = game.ctrl[i] ? '' : game.mobile && i === 0 ? '「必殺!」' : (i === 0 ? 'R' : 'L');
       text('必殺技OK!' + (key ? ' ' + key : ''), gx + gw / 2, gy, 15, '#ffffff', 'center', '900', 4);
-    }
+    } else if (!game.ctrl[i] && !(game.mobile && i === 0)) text((i === 0 ? 'R' : 'L') + ': ' + SPECIALS[f.c.id].name, gx + gw / 2, gy, 11, 'rgba(220,240,255,0.75)', 'center', '800', 3);
   }
 }
 function drawOffscreen() {
@@ -2729,15 +3229,26 @@ function drawTouchControls() {
   TC.btns.forEach(b => {
     const on = held.has(b.k), r = on ? b.r * 0.93 : b.r;
     if (b.k === 'x') {
-      // 必殺: 満タンで光ってドクドク、未満は暗く+ゲージの円
-      const pul = 0.5 + 0.5 * Math.sin(frameCount * 0.22);
-      if (ready) { ctx.fillStyle = 'rgba(255,230,90,' + (0.18 + 0.2 * pul) + ')'; ctx.beginPath(); ctx.arc(b.x, b.y, r + 10 + 6 * pul, 0, Math.PI * 2); ctx.fill(); }
-      ctx.fillStyle = ready ? hexA(b.color, on ? 0.85 : 0.5 + 0.2 * pul) : 'rgba(120,120,140,0.22)';
-      ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = ready ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3; ctx.stroke();
-      if (!ready && me) { ctx.strokeStyle = 'rgba(255,210,61,0.75)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(b.x, b.y, r - 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * me.meter / SUPER_MAX); ctx.stroke(); }
-      text(b.label, b.x, b.y - (ready ? 6 : 0), 19, ready ? '#ffffff' : 'rgba(255,255,255,0.55)', 'center', '900', 4);
-      if (ready) text('OK!', b.x, b.y + 15, 13, '#fff6a8', 'center', '900', 3);
+      // ゲージ未満 = 特技ボタン(水色・下に技の名前・まわりにゲージの円) / 満タン = 必殺技ボタン(金色に光ってドクドク)
+      const pul = 0.5 + 0.5 * Math.sin(frameCount * 0.22), sp = me && SPECIALS[me.c.id];
+      if (ready) {
+        ctx.fillStyle = 'rgba(255,230,90,' + (0.2 + 0.22 * pul) + ')'; ctx.beginPath(); ctx.arc(b.x, b.y, r + 12 + 8 * pul, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,246,168,' + (0.5 + 0.4 * pul) + ')'; ctx.lineWidth = 3;
+        for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + frameCount * 0.04; ctx.beginPath(); ctx.moveTo(b.x + Math.cos(a) * (r + 6), b.y + Math.sin(a) * (r + 6)); ctx.lineTo(b.x + Math.cos(a) * (r + 14 + 6 * pul), b.y + Math.sin(a) * (r + 14 + 6 * pul)); ctx.stroke(); }
+        const g = ctx.createRadialGradient(b.x - r * 0.3, b.y - r * 0.4, 4, b.x, b.y, r);
+        g.addColorStop(0, '#fff6c0'); g.addColorStop(0.55, on ? '#ffc21a' : '#ffd23d'); g.addColorStop(1, '#e09a00');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3.5; ctx.stroke();
+        text('必殺!', b.x, b.y - 7, 20, '#ffffff', 'center', '900', 5);
+        text('OK!', b.x, b.y + 15, 13, '#fff6a8', 'center', '900', 3);
+      } else {
+        ctx.fillStyle = on ? 'rgba(127,216,255,0.62)' : 'rgba(127,216,255,0.28)';
+        ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = on ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)'; ctx.lineWidth = on ? 4 : 3; ctx.stroke();
+        if (me) { ctx.strokeStyle = 'rgba(255,210,61,0.85)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(b.x, b.y, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * me.meter / SUPER_MAX); ctx.stroke(); }
+        text('とくぎ', b.x, b.y - 8, 17, 'rgba(255,255,255,0.95)', 'center', '900', 4);
+        if (sp) text(sp.short, b.x, b.y + 13, sp.short.length > 4 ? 11 : 13, 'rgba(255,255,255,0.9)', 'center', '800', 3);
+      }
       return;
     }
     ctx.fillStyle = hexA(b.color, on ? 0.65 : 0.3);
@@ -2783,8 +3294,8 @@ function drawControls(pi, x, y) {
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(x - 280, y - 34, 560, 306, 18); ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.stroke();
   text(pi === 0 ? 'プレイヤー1 (左手側)' : 'プレイヤー2 (右手側)', x, y, 24, c, 'center', '900');
   const rows = pi === 0
-    ? [[['W'], 'ジャンプ (空中でもう1回)'], [['A', 'D'], '左右に移動'], [['S'], 'すり抜け / 急降下'], [['F'], '攻撃 (↑と同時で上攻撃)'], [['G'], '強攻撃 (空中↑で復帰技)'], [['H'], 'ガード・回避'], [['R'], '必殺技 (ゲージ満タンで)']]
-    : [[['↑'], 'ジャンプ (空中でもう1回)'], [['←', '→'], '左右に移動'], [['↓'], 'すり抜け / 急降下'], [[',', 'Num1'], '攻撃 (↑と同時で上攻撃)'], [['.', 'Num2'], '強攻撃 (空中↑で復帰技)'], [['/', 'Num3'], 'ガード・回避'], [['L', 'Num4'], '必殺技 (ゲージ満タンで)']];
+    ? [[['W'], 'ジャンプ (空中でもう1回)'], [['A', 'D'], '左右に移動'], [['S'], 'すり抜け / 急降下'], [['F'], '攻撃 (↑と同時で上攻撃)'], [['G'], '強攻撃 (空中↑で復帰技)'], [['H'], 'ガード・回避'], [['R'], '特技 / 満タンで必殺技']]
+    : [[['↑'], 'ジャンプ (空中でもう1回)'], [['←', '→'], '左右に移動'], [['↓'], 'すり抜け / 急降下'], [[',', 'Num1'], '攻撃 (↑と同時で上攻撃)'], [['.', 'Num2'], '強攻撃 (空中↑で復帰技)'], [['/', 'Num3'], 'ガード・回避'], [['L', 'Num4'], '特技 / 満タンで必殺技']];
   rows.forEach((r, i) => {
     const ry = y + 46 + i * 34;
     r[0].forEach((k, j) => keycap(k, x - 210 + j * 56, ry, k.length > 2 ? 52 : 40, c));
@@ -2796,7 +3307,8 @@ function renderHowto() {
   fullFill('rgba(0,0,0,0.25)');
   text('操作説明・あそびかた', W / 2, 44, 36, '#ffffff', 'center', '900', 6);
   if (game.mobile) drawTouchHelp(); else { drawControls(0, 340, 110); drawControls(1, 940, 110); }
-  text('必殺技:ネコ「ネコまっしぐら」・ニンジン「キャロットビーム」・マグカップ「熱々コーヒー噴火」・ハブラシ「ミントブラスト」・エダマメ「まめまめガトリング」', W / 2, 396, 15, '#ffd23d', 'center', '700', 4);
+  text('特技(ゲージがたまっていない時の必殺ボタン): ネコ「ねこだまし」 ニンジン「にんじんドリル」 マグ「湯気カウンター」 ハブラシ「歯みがき粉ショット」 エダマメ「まめ地雷」', W / 2, 391, 14, '#9fe8ff', 'center', '700', 4);
+  text('必殺技(ゲージ満タン): ネコ「ネコまっしぐら」 ニンジン「キャロットビーム」 マグ「熱々コーヒー噴火」 ハブラシ「ミントブラスト」 エダマメ「まめまめガトリング」', W / 2, 410, 14, '#ffd23d', 'center', '700', 4);
   // 読み合い
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(60, 420, 560, 250, 18); ctx.fill();
   text('読み合いの三すくみ', 340, 448, 22, '#ffd23d', 'center', '900');
@@ -2816,8 +3328,8 @@ function renderHowto() {
   ctx.fillStyle = 'rgba(10,12,28,0.72)'; rr(660, 420, 560, 250, 18); ctx.fill();
   text('ルール', 940, 448, 22, '#ffd23d', 'center', '900');
   const rules = game.mobile
-    ? ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '攻撃を当てる/受けると必殺技ゲージがたまる', '満タンで「必殺」ボタン!(ガード・回避・ジャンプでかわせる)', 'ガード+スティック←→で回避、↓でその場回避', 'キャラ選択で相手キャラとCPUの強さ(Lv1〜7)を選ぶ', '左上の Ⅱ ボタンでポーズ']
-    : ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '攻撃を当てる/受けると必殺技ゲージがたまる', '満タンで必殺技!(ガード・回避・ジャンプでかわせる)', 'ガード中に←→で回避、↓でその場回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜7)と対戦', 'Esc / P でポーズ'];
+    ? ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '「とくぎ」ボタン=キャラごとの特技(何度でも)', 'ゲージ満タンで金色の「必殺!」に → 撃墜級の必殺技', 'ガード+スティック←→で回避、↓でその場回避', 'キャラ選択で相手キャラとCPUの強さ(Lv1〜7)を選ぶ', '左上の Ⅱ ボタンでポーズ']
+    : ['ダメージ%が高いほど遠くへふっとぶ', '画面の外まで飛ばされるとストック-1', 'ストックが先に0になった方の負け', '強攻撃はタメが長い — 見てからガード!', '必殺ボタン=キャラごとの特技(何度でも使える)', 'ゲージ満タンなら撃墜級の必殺技!(よけられる)', 'ガード中に←→で回避、↓でその場回避', 'キャラ選択で W/S・↑/↓ → CPU(Lv1〜7)と対戦', 'Esc / P でポーズ'];
   rules.forEach((r, i) => text('・' + r, 690, 476 + i * 22, 15, '#eef1ff', 'left', '700'));
   text(game.mobile ? 'どこかをタップでもどる' : '決定キー または ガードキー でもどる', W / 2, 700, 15, '#c9d1ff', 'center', '600');
   uiBtn(0, 0, W, H, () => { if (game.t > 10) { sfx('back'); setScene('title'); } });
@@ -2832,7 +3344,7 @@ function drawTouchHelp() {
   text('画面の左半分', sx, sy + 86, 15, '#c9d1ff', 'center', '700');
   ['スティック ←→:移動', 'スティックを大きく↑:ジャンプ(もう一度で2段)', 'スティックを軽く↑+A/B:上攻撃・復帰技', 'スティック↓:すり抜け / 急降下', '指を置いた場所にスティックが出ます'].forEach((r, i) => text(r, 270, 160 + i * 38, 19, i === 4 ? '#ffd23d' : '#eef1ff', 'left', '700'));
   // ボタン図
-  const bs = [['A', '#ff5e6c', '攻撃(↑+Aで上攻撃)'], ['B', '#ffb23d', '強攻撃(空中↑+Bで復帰技)'], ['ガ', '#4da3ff', 'ガード(+←→で回避)'], ['ジ', '#3ddc97', 'ジャンプボタン'], ['つ', '#c77dff', 'つかみ(ガードに勝つ)'], ['必', '#ffd23d', '必殺技(ゲージ満タンで光る)']];
+  const bs = [['A', '#ff5e6c', '攻撃(↑+Aで上攻撃)'], ['B', '#ffb23d', '強攻撃(空中↑+Bで復帰技)'], ['ガ', '#4da3ff', 'ガード(+←→で回避)'], ['ジ', '#3ddc97', 'ジャンプボタン'], ['つ', '#c77dff', 'つかみ(ガードに勝つ)'], ['特', '#7fd8ff', 'とくぎ → 満タンで金色の必殺技']];
   bs.forEach((b, i) => {
     const y = 142 + i * 34;
     ctx.fillStyle = hexA(b[1], 0.45); ctx.beginPath(); ctx.arc(720, y, 19, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.stroke();
@@ -2943,18 +3455,22 @@ function renderMatch() {
   drawBackground(true);
   ctx.save();
   const shk = fxMotion();
-  ctx.translate(W / 2 + cam.sx * shk + FX.kx, H / 2 + cam.sy * shk + FX.ky); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+  // 必殺技で撃墜コースの時: 飛んでいく相手にぐっと寄る(見た目だけ)
+  let cz = cam.z, ccx = cam.x, ccy = cam.y; const kz = FX.koZoom;
+  if (kz && game.fighters[kz.pi] && game.fighters[kz.pi].state !== 'dead') { const v = game.fighters[kz.pi], e = Math.sin(Math.min(1, kz.t / kz.max) * Math.PI) * (REDUCED_MOTION ? 0.3 : 1); cz *= 1 + 0.22 * e; ccx = lerp(ccx, v.x, 0.45 * e); ccy = lerp(ccy, v.y - v.h / 2, 0.45 * e); }
+  ctx.translate(W / 2 + cam.sx * shk + FX.kx, H / 2 + cam.sy * shk + FX.ky); ctx.scale(cz, cz); ctx.translate(-ccx, -ccy);
   drawStage();
   const fs = game.fighters;
   const sfx0 = game.superFx;
-  if (sfx0) { ctx.save(); ctx.setTransform(baseTf, 0, 0, baseTf, baseX, baseY); fullFill('rgba(5,4,20,' + (0.5 * Math.min(1, (sfx0.max - sfx0.t) / 12)) + ')'); ctx.restore(); }
+  drawSuperBackdrop();
+  drawMines();
   fs.forEach(drawSuperAura);
   // 攻撃中のキャラを手前に
   const order = [...fs].sort((a, b) => (a.state === 'attack') - (b.state === 'attack'));
   fs.forEach(drawSuperTrail);
   order.forEach(drawFighter);
   fxDrawBeanTrails();
-  for (const p of game.projs) drawBean(p.x, p.y, p.r, p.vx, { glow: p.big, gold: p.isSuper && p.fin });
+  for (const p of game.projs) if (p.paste) drawPaste(p); else drawBean(p.x, p.y, p.r, p.vx, { glow: p.big, gold: p.isSuper && p.fin });
   fs.forEach(drawSuperFx);
   drawParticles();
   fxDrawParticles();
@@ -3027,7 +3543,8 @@ function renderResult() {
 let last = performance.now(), acc = 0;
 function frame(now) {
   fxPerf(now - last);
-  acc += Math.min(200, now - last); last = now;
+  // 必殺技のとどめが撃墜コースの時はスローモーション(ゲームの中身は同じ。進む速さだけ遅くする)
+  acc += Math.min(200, now - last) * (game.slowmo > 0 && game.scene === 'match' && !game.paused ? 0.32 : 1); last = now;
   let n = 0;
   while (acc >= STEP && n < 8) { tick(); acc -= STEP; n++; }
   if (n >= 8) acc = 0;
@@ -3056,7 +3573,7 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     }).catch(() => {});
   });
 }
-window.__NF = { FX, fxQ, setMuted, getMuted: () => muted, getAC: () => AC, spawnBean, beanStats, armorOn, CHG_MAX, VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
+window.__NF = { FX, fxQ, setMuted, getMuted: () => muted, getAC: () => AC, spawnBean, beanStats, armorOn, CHG_MAX, VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; }, doSuper, trySpecial, SUPERS, SPECIALS, CpuAI, predictKO, STAGE, BLAST, MINE, PASTE, counterOn, superReady };
 </script>
 </body>
 </html>

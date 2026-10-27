@@ -271,59 +271,95 @@ function menuInput() {
 }
 
 // ===================== サウンド(シンセ) =====================
-let AC = null, muted = false;
+let AC = null, MASTER = null, NOISE = null, audioUnlocked = false;
+// ミュートは localStorage に保存(タイトル/キャラ選択のボタン or M キー)
+let muted = (() => { try { return typeof localStorage !== 'undefined' && localStorage.getItem('nf_mute') === '1'; } catch (e) { return false; } })();
+const MASTER_VOL = 0.55;
+function setMuted(on) {
+  muted = !!on;
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem('nf_mute', muted ? '1' : '0'); } catch (e) {}
+  if (MASTER && AC) { try { MASTER.gain.setTargetAtTime(muted ? 0 : MASTER_VOL, AC.currentTime, 0.02); } catch (e) {} }
+  if (!muted) sfx('ok');
+}
+// iOS: 最初のタッチ/キー入力の中で AudioContext を作って鳴らす(それまでは一切音を出さない)
 function initAudio() {
   try {
-    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-    else if (AC.state === 'suspended') AC.resume();
+    if (!AC) {
+      const Ctor = window.AudioContext || window.webkitAudioContext; if (!Ctor) return;
+      AC = new Ctor();
+      const comp = AC.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+      MASTER = AC.createGain(); MASTER.gain.value = muted ? 0 : MASTER_VOL; MASTER.connect(comp); comp.connect(AC.destination);
+      const len = Math.floor(AC.sampleRate * 1.0); NOISE = AC.createBuffer(1, len, AC.sampleRate);
+      const d = NOISE.getChannelData(0); let s = 12345; for (let i = 0; i < len; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; d[i] = s / 0x3fffffff - 1; }
+    }
+    if (AC.state === 'suspended') AC.resume();
+    if (!audioUnlocked) { const b = AC.createBuffer(1, 1, 22050), src = AC.createBufferSource(); src.buffer = b; src.connect(AC.destination); src.start(0); audioUnlocked = true; }
   } catch (e) { AC = null; }
 }
-function tone(f0, f1, dur, type, vol) {
-  if (!AC || muted) return;
-  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+function audioOK() { return AC && MASTER && !muted && AC.state !== 'closed'; }
+function tone(f0, f1, dur, type, vol, delay) {
+  if (!audioOK()) return;
+  const t = AC.currentTime + (delay || 0), o = AC.createOscillator(), g = AC.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
-  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t + dur + 0.02);
 }
-function noise(dur, vol, freq) {
-  if (!AC || muted) return;
-  const t = AC.currentTime, len = Math.floor(AC.sampleRate * dur), buf = AC.createBuffer(1, len, AC.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-  const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
-  s.buffer = buf; f.type = 'lowpass'; f.frequency.value = freq; g.gain.value = vol;
-  s.connect(f); f.connect(g); g.connect(AC.destination); s.start(t);
+// ノイズ(共有バッファ)。ftype: lowpass/highpass/bandpass。f1 を渡すとフィルタをスイープ(風切り音)
+function noise(dur, vol, freq, ftype, f1, q, delay) {
+  if (!audioOK() || !NOISE) return;
+  const t = AC.currentTime + (delay || 0), s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = NOISE; f.type = ftype || 'lowpass'; f.frequency.setValueAtTime(freq, t); if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + dur); if (q) f.Q.value = q;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, dur * 0.25)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(MASTER); s.start(t, (frameCount * 0.137) % 0.5); s.stop(t + dur + 0.02);
 }
+// キャラ別の空振り音(リーチ・重さが耳でもわかる)
+const SWOOSH = {
+  neko:    [0.08, 0.10, 2600, 6200, 2.2],  // シュッ(爪)
+  ninjin:  [0.05, 0.08, 4200, 8000, 2.5],  // 短く高いヒュッ
+  mug:     [0.22, 0.16, 380, 1300, 1.2],   // 低く重いブォン
+  brush:   [0.15, 0.10, 1700, 5200, 4.0],  // 長く細いシューッ(突き)
+  edamame: [0.07, 0.08, 2400, 4600, 2.0]
+};
 function sfx(n, p) {
+  if (!audioOK()) return;
   switch (n) {
     case 'jump': tone(380, 620, 0.09, 'sine', 0.06); break;
     case 'dj': tone(500, 820, 0.09, 'sine', 0.06); break;
-    case 'swing': noise(0.06, 0.05, 2500); break;
-    case 'hit': noise(0.12, 0.22, 1800); tone(220, 90, 0.1, 'square', 0.06); break;
-    case 'smash': noise(0.25, 0.35, 1200); tone(160, 45, 0.25, 'sawtooth', 0.1); break;
-    case 'shield': tone(1200, 900, 0.07, 'triangle', 0.07); break;
-    case 'break': tone(900, 120, 0.5, 'square', 0.08); noise(0.3, 0.2, 3000); break;
+    case 'swing': break; // 空振り音は演出側(fxObserve)でキャラ別に鳴らす
+    case 'swoosh': { const s = SWOOSH[p && p.id] || SWOOSH.neko, k = p && p.strong ? 1.35 : 1; noise(s[0] * k, s[1] * (p && p.strong ? 1.25 : 1), s[2] / k, 'bandpass', s[3], s[4]); if (p && p.id === 'mug' && p.strong) tone(110, 70, 0.2, 'sine', 0.08); break; }
+    case 'hit': // 軽い攻撃のヒット: パチッ
+      noise(0.07, 0.22, 2600, 'bandpass', 1500, 1.2); tone(520, 180, 0.06, 'square', 0.045); break;
+    case 'smash': { // 重い攻撃のヒット: ドゴッ(強さ p 0..1)
+      const k = p == null ? 0.7 : p;
+      tone(150, 38, 0.22 + 0.12 * k, 'sine', 0.28 + 0.12 * k); noise(0.18 + 0.12 * k, 0.26 + 0.1 * k, 1500, 'lowpass', 300); noise(0.035, 0.18, 4000, 'highpass'); tone(260, 90, 0.12, 'square', 0.04); break; }
+    case 'shield': tone(1500, 1100, 0.08, 'triangle', 0.08); tone(2300, 2100, 0.06, 'sine', 0.035); noise(0.04, 0.05, 5000, 'highpass'); break;
+    case 'break': tone(900, 120, 0.5, 'square', 0.07); noise(0.3, 0.2, 3000); break;
     case 'grab': tone(300, 260, 0.06, 'square', 0.05); break;
-    case 'dodge': noise(0.08, 0.05, 5000); break;
-    case 'ko': noise(0.7, 0.4, 900); tone(500, 40, 0.7, 'sawtooth', 0.1); break;
-    case 'menu': tone(660, 660, 0.05, 'square', 0.04); break;
-    case 'ok': tone(660, 990, 0.1, 'square', 0.05); break;
-    case 'back': tone(500, 300, 0.08, 'square', 0.04); break;
-    case 'count': tone(440, 440, 0.12, 'square', 0.06); break;
-    case 'go': tone(880, 880, 0.3, 'square', 0.07); break;
-    case 'land': noise(0.04, 0.04, 600); break;
-    case 'super': tone(220, 1320, 0.45, 'sawtooth', 0.07); tone(440, 1760, 0.45, 'square', 0.04); noise(0.3, 0.12, 4000); break;
+    case 'dodge': noise(0.08, 0.05, 5000, 'highpass'); break;
+    case 'ko': tone(95, 28, 0.9, 'sine', 0.4); noise(0.8, 0.34, 900, 'lowpass', 150); tone(620, 60, 0.7, 'sawtooth', 0.06); noise(0.06, 0.2, 5000, 'highpass'); break;
+    case 'menu': tone(660, 660, 0.05, 'square', 0.035); break;
+    case 'ok': tone(660, 990, 0.1, 'square', 0.045); break;
+    case 'back': tone(500, 300, 0.08, 'square', 0.035); break;
+    case 'count': tone(440, 440, 0.12, 'square', 0.05); break;
+    case 'go': tone(880, 880, 0.3, 'square', 0.06); break;
+    case 'land': noise(0.05, 0.05, 700); break;
+    case 'thud': noise(0.12, 0.12, 400, 'lowpass', 120); tone(90, 50, 0.1, 'sine', 0.08); break; // マグカップの着地
+    case 'super': tone(220, 1320, 0.45, 'sawtooth', 0.06); tone(440, 1760, 0.45, 'square', 0.035); noise(0.3, 0.1, 4000); tone(1760, 1760, 0.25, 'sine', 0.04, 0.4); break;
     case 'nope': tone(260, 200, 0.08, 'square', 0.04); break;
-    case 'slash': for (let i = 0; i < 4; i++) setTimeout(() => { noise(0.07, 0.12, 5000); tone(900, 500, 0.06, 'sawtooth', 0.03); }, i * 70); break;
-    case 'beam': tone(180, 120, 0.7, 'sawtooth', 0.09); tone(720, 680, 0.7, 'square', 0.03); noise(0.6, 0.1, 2200); break;
-    case 'geyser': noise(0.8, 0.3, 700); tone(90, 40, 0.7, 'sawtooth', 0.12); break;
-    case 'pew': tone(900, 1500, 0.07, 'square', 0.035); break;
-    case 'bigshot': tone(300, 900, 0.18, 'square', 0.06); noise(0.12, 0.08, 2500); break;
-    case 'full': tone(1200, 1200, 0.08, 'sine', 0.06); tone(1800, 1800, 0.12, 'sine', 0.05); break;
+    case 'slash': for (let i = 0; i < 4; i++) { noise(0.07, 0.12, 5000, 'highpass', 0, 0, i * 0.07); tone(900, 500, 0.06, 'sawtooth', 0.03, i * 0.07); } break;
+    case 'beam': tone(180, 120, 0.7, 'sawtooth', 0.08); tone(720, 680, 0.7, 'square', 0.025); noise(0.6, 0.1, 2200); break;
+    case 'geyser': noise(0.8, 0.28, 700); tone(90, 40, 0.7, 'sawtooth', 0.1); break;
+    case 'pew': tone(760, 230, 0.08, 'sine', 0.13); noise(0.025, 0.08, 3000, 'bandpass'); break;        // ポンッ(小さい豆)
+    case 'bigshot': tone(420, 110, 0.18, 'sine', 0.2); noise(0.12, 0.12, 1200, 'lowpass'); tone(900, 1500, 0.08, 'triangle', 0.04); break; // ボンッ(ため豆)
+    case 'charge': { const k = p || 0; tone(380 + 700 * k, 400 + 760 * k, 0.05, 'sine', 0.035 + 0.02 * k); break; }
+    case 'full': tone(1200, 1200, 0.08, 'sine', 0.06); tone(1800, 1800, 0.12, 'sine', 0.05, 0.06); break;
     case 'armor': tone(160, 120, 0.12, 'square', 0.07); noise(0.08, 0.1, 900); break;
-    case 'gatling': for (let i = 0; i < 9; i++) setTimeout(() => tone(800, 1400, 0.05, 'square', 0.03), i * 66); break;
-    case 'mint': tone(1200, 2400, 0.35, 'sine', 0.07); tone(1600, 3200, 0.5, 'triangle', 0.05); noise(0.5, 0.12, 6000); break;
+    case 'gatling': for (let i = 0; i < 9; i++) tone(800, 1400, 0.05, 'square', 0.03, i * 0.066); break;
+    case 'mint': tone(1200, 2400, 0.35, 'sine', 0.07); tone(1600, 3200, 0.5, 'triangle', 0.045); noise(0.5, 0.12, 6000); break;
   }
 }
+// バックグラウンドに回ったら音を止める
+if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('visibilitychange', () => { try { if (!AC) return; if (document.visibilityState === 'hidden') AC.suspend(); else AC.resume(); } catch (e) {} });
 
 // ===================== キャラクター =====================
 // bars: スピード, パワー, 重さ, ジャンプ, リーチ
@@ -484,7 +520,7 @@ function startMatch() {
   game.paused = false; particles.length = 0;
   game.projs = []; game.projHist = [];
   game.ais = game.ctrl.map((lv, i) => lv > 0 ? new CpuAI(i, lv) : null); game.hist = [[], []]; game.matchT = 0; game.kos = [];
-  cam.x = 640; cam.y = 380; cam.z = 1;
+  cam.x = 640; cam.y = 380; cam.z = 1; fxReset();
   setScene('match');
 }
 
@@ -528,7 +564,7 @@ function doSuper(f, inp) {
   f.vx = 0; f.vy = 0; f.kbx = 0; f.kby = 0; f.ff = false; f.supX = f.x; f.supY = f.y; f.trail = [];
   game.superFx = { pi: f.pi, t: 0, max: 48, name: sp.name };
   game.hitstop = Math.max(game.hitstop, SUPER_FREEZE); game.shake = Math.max(game.shake, 6);
-  sfx('super'); burst(f.x, f.y - f.h / 2, 26, '#ffd23d', 9);
+  sfx('super'); burst(f.x, f.y - f.h / 2, 26, '#ffd23d', 9); fxSuper(f);
 }
 function startMove(f, id, inp) {
   const m = f.c.mv[id] || MOVES[id];
@@ -826,7 +862,7 @@ function applyDamage(a, b, m, dir, isThrow) {
   game.shake = Math.max(game.shake, strong ? Math.min(18, 4 + kb * 0.45) : 2 + dmg * 0.3);
   const hx = (a.x + b.x) / 2, hy = b.y - b.h / 2;
   hitSpark(hx, hy, strong ? 1.6 : 1, P_COLORS[a.pi]);
-  sfx(strong ? 'smash' : 'hit');
+  sfx(strong ? 'smash' : 'hit', clamp(kb / 20, 0, 1)); fxHit(a, b, hx, hy, dmg, kb, strong, m);
 }
 function isIntangible(b) {
   if (b.invuln > 0 || b.state === 'dead' || b.state === 'respawn' || b.state === 'grabbed') return true;
@@ -878,7 +914,7 @@ function shieldHit(a, b, m, srcX, melee) {
   b.vx = d * (2 + dmg * 0.28);
   if (melee && a.grounded) a.vx = -d * (1 + dmg * 0.12);
   game.hitstop = Math.max(game.hitstop, Math.min(10, Math.floor(3 + dmg * 0.25)));
-  sfx('shield'); hitSpark((srcX + b.x) / 2, b.y - b.h / 2, 0.6, '#9fe8ff');
+  sfx('shield'); hitSpark((srcX + b.x) / 2, b.y - b.h / 2, 0.6, '#9fe8ff'); fxGuard(b, srcX, b.y - b.h / 2, dmg);
   if (m.isSuper && !a.supHit) { a.supHit = 2; a.stats.superBlocked++; }
   if (b.shieldHP <= 0) shieldBreak(b);
   else { b.state = 'shieldstun'; b.t = 0; b.stunLen = Math.floor(dmg * 0.6) + 3; }
@@ -891,7 +927,7 @@ function armorHit(a, b, m) {
   b.percent = Math.min(999, b.percent + dmg); a.stats.dealt += dmg; b.stats.armorHits++;
   if (!m.noMeter) { a.meter = Math.min(SUPER_MAX, a.meter + dmg * SUPER_GAIN_DEAL * (a.st.meterGain || 1)); b.meter = Math.min(SUPER_MAX, b.meter + dmg * SUPER_GAIN_TAKE * (b.st.meterGain || 1)); }
   b.flash = 4; b.pctShake = 8; game.hitstop = Math.max(game.hitstop, 5); game.shake = Math.max(game.shake, 4);
-  sfx('armor'); hitSpark(b.x, b.y - b.h / 2, 0.8, '#ffb347');
+  sfx('armor'); hitSpark(b.x, b.y - b.h / 2, 0.8, '#ffb347'); fxArmor(b);
   particles.push({ x: b.x, y: b.y - b.h - 22, vx: 0, vy: -1, life: 30, max: 30, size: 18, color: '#ffb347', type: 'text', text: 'アーマー!' });
   return true;
 }
@@ -922,6 +958,7 @@ function spawnBean(f, lv, sup) {
   game.projs.push(p);
   sfx(sup ? 'pew' : p.big ? 'bigshot' : 'pew');
   if (p.big) burst(x, p.y, 8, '#d8ff8a', 5);
+  fxShot(f, p);
 }
 function projBox(p) { return { x: p.x - p.r, y: p.y - p.r * 0.8, w: p.r * 2, h: p.r * 1.6, cx: p.x, cy: p.y }; }
 function updateProjs() {
@@ -966,7 +1003,7 @@ function checkBlast(f, o) {
     const vx0 = cam.x - W / 2 / cam.z, vx1 = cam.x + W / 2 / cam.z, vy0 = cam.y - H / 2 / cam.z, vy1 = cam.y + H / 2 / cam.z;
     const ex = clamp(f.x, vx0 + 20, vx1 - 20), ey = clamp(f.y - f.h / 2, vy0 + 20, vy1 - 20);
     koBlast(ex, ey, P_COLORS[f.pi], Math.atan2(cam.y - ey, cam.x - ex));
-    game.shake = 22; sfx('ko');
+    game.shake = 22; sfx('ko'); fxKO(ex, ey, P_COLORS[f.pi]);
     if (f.stocks <= 0) { game.endTimer = 110; game.winner = o.pi; showBanner('GAME!', '#ffffff', 110); }
   }
 }
@@ -996,6 +1033,257 @@ function updateParticles() {
   }
 }
 function showBanner(text, color, life) { game.banner = { text, color, life: life || 70, max: life || 70 }; }
+
+// ===================== 演出(手ごたえ):見た目と音だけ。ゲーム進行には一切影響しない =====================
+// ・Math.random は使わない(独自の乱数 vrnd)→ ゲーム側の乱数の並びを変えない
+// ・fxLive は実際に画面描画が始まってから true。Node のバランスシミュでは描画が走らないので全部素通り
+// ・ゲームの状態(fighter / game)は読むだけで、書き換えない
+let fxLive = false, vseed = 0x2f6b1d;
+function vrnd(a, b) { vseed = (Math.imul(vseed, 1664525) + 1013904223) >>> 0; return a + (vseed / 4294967296) * (b - a); }
+const REDUCED_MOTION = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+const FX = { auto: 1, list: [], kx: 0, ky: 0, kvx: 0, kvy: 0, flash: 0, flashCol: '255,255,255', vic: null, st: [null, null], trails: new Map(), frEma: 16.7, slowN: 0, fastN: 0 };
+// 品質: スマホは控えめ(粒の数・揺れ)、重い端末では自動でさらに下げる
+function fxQ() { return FX.auto * (game.mobile ? 0.6 : 1); }
+function fxMotion() { return (REDUCED_MOTION ? 0.35 : 1) * (game.mobile ? 0.7 : 1); }
+function fxCap() { return game.mobile ? 140 : 260; }
+function fxAdd(p) { if (FX.list.length >= fxCap()) FX.list.shift(); p.max = p.life; FX.list.push(p); return p; }
+function fxN(n) { return Math.max(1, Math.round(n * fxQ())); }
+function fxKick(dx, dy) { const k = fxMotion(); FX.kvx += dx * k; FX.kvy += dy * k; }
+function fxFlash(a, rgb) { const v = a * (REDUCED_MOTION ? 0.4 : 1); if (v > FX.flash) { FX.flash = v; FX.flashCol = rgb || '255,255,255'; } }
+function fxReset() { FX.list.length = 0; FX.kx = FX.ky = FX.kvx = FX.kvy = 0; FX.flash = 0; FX.vic = null; FX.st = [null, null]; FX.trails.clear(); }
+// --- 汎用パーツ ---
+function fxSparks(x, y, n, ang, spread, sp0, sp1, w, cols, life) {
+  for (let i = 0; i < n; i++) { const a = ang + vrnd(-spread, spread), s = vrnd(sp0, sp1); fxAdd({ t: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, drag: 0.82, g: 0, w: vrnd(w * 0.6, w), color: cols[i % cols.length], life: Math.round(vrnd(life * 0.7, life)) }); }
+}
+function fxDust(x, y, n, size, dir, col) {
+  for (let i = 0; i < n; i++) { const d = dir || (i % 2 ? 1 : -1); fxAdd({ t: 'puff', x: x + vrnd(-6, 6), y: y - 3, vx: d * vrnd(0.6, 2.6), vy: vrnd(-1.2, -0.2), drag: 0.9, g: 0, r0: size * 0.4, r1: size * vrnd(0.9, 1.3), color: col || '220,226,255', a: 0.5, life: Math.round(vrnd(16, 24)) }); }
+}
+function fxRing(x, y, r0, r1, lw, color, life, sy) { fxAdd({ t: 'ring', x, y, vx: 0, vy: 0, drag: 1, g: 0, r0, r1, lw, color, sy: sy || 1, life }); }
+// ---- ゲーム側から呼ばれるフック(すべて fxLive でないと何もしない) ----
+function fxHit(a, b, hx, hy, dmg, kb, strong, m) {
+  if (!fxLive) return;
+  const s = clamp(0.5 * kb / 18 + 0.5 * dmg / 18, 0, 1), id = a.c.id;
+  const ang = Math.atan2(b.kby, b.kbx || 0.001), mo = fxMotion();
+  fxAdd({ t: 'star', x: hx, y: hy, vx: 0, vy: 0, drag: 1, g: 0, r: 16 + 40 * s, rot: vrnd(0, 6.3), n: strong ? 10 : 7, color: strong ? '#fff6a8' : '#ffffff', life: strong ? 8 : 5 });
+  fxSparks(hx, hy, fxN(4 + 12 * s), ang, 1.3 - 0.6 * s, 5, 9 + 13 * s, 2.5 + 3 * s, ['#ffffff', '#fff1a0', a.color], 9 + 6 * s);
+  if (strong) {
+    fxRing(hx, hy, 8, 60 + 80 * s, 4 + 8 * s, '#ffffff', 12);
+    fxFlash(0.16 + 0.24 * s);
+    fxKick(Math.cos(ang) * (5 + 13 * s), Math.sin(ang) * (5 + 13 * s));
+  } else fxKick(Math.cos(ang) * (1 + 2 * s), Math.sin(ang) * (1 + 2 * s));
+  FX.vic = { pi: b.pi, amp: (1.5 + 4.5 * s) * mo };
+  // 攻撃側キャラの「らしさ」
+  if (id === 'mug') { for (let i = 0; i < fxN(4 + 6 * s); i++) fxAdd({ t: 'dot', x: hx, y: hy, vx: vrnd(-4, 4) + Math.cos(ang) * 3, vy: vrnd(-7, -2), drag: 0.97, g: 0.45, r: vrnd(2.5, 5.5), color: i % 3 ? '#6b3e1f' : '#c9905a', life: 26 }); }
+  else if (id === 'brush' && m.tip && m.dmg > (a.c.mv[m.id] || {}).dmg) { fxRing(hx, hy, 4, 46, 3, '#c9fbe9', 10); fxAdd({ t: 'star', x: hx, y: hy, vx: 0, vy: 0, drag: 1, g: 0, r: 30, rot: 0.4, n: 4, color: '#c9fbe9', life: 9 }); }
+  else if (id === 'ninjin') { for (let i = 0; i < fxN(4); i++) fxAdd({ t: 'leaf', x: hx, y: hy, vx: vrnd(-4, 4), vy: vrnd(-5, -1), drag: 0.94, g: 0.18, r: vrnd(4, 7), rot: vrnd(0, 6), color: i % 2 ? '#52d062' : '#ff9a3c', life: 24 }); }
+  else if (id === 'neko') fxAdd({ t: 'claw', x: b.x, y: b.y - b.h * 0.55, vx: 0, vy: 0, drag: 1, g: 0, ang: a.facing > 0 ? 0.9 : Math.PI - 0.9, r: 20 + 10 * s, color: '#ffffff', life: 12 });
+  else if (id === 'edamame') { for (let i = 0; i < fxN(3 + 4 * s); i++) fxAdd({ t: 'dot', x: hx, y: hy, vx: vrnd(-4, 4), vy: vrnd(-5, 0), drag: 0.95, g: 0.3, r: vrnd(2, 4), color: '#b6ec7a', life: 20 }); }
+}
+function fxGuard(b, x, y, dmg) {
+  if (!fxLive) return;
+  const r = b.h * 0.62 * (0.45 + 0.55 * Math.max(0, b.shieldHP) / SHIELD_MAX), d = Math.sign(b.x - x) || 1, cx = b.x - d * r * 0.7, cy = b.y - b.h / 2;
+  fxRing(cx, cy, 4, 26 + dmg * 1.5, 3, '#c8f4ff', 9);
+  fxSparks(cx, cy, fxN(5 + dmg * 0.4), d > 0 ? Math.PI : 0, 1.1, 3, 8, 3, ['#9fe8ff', '#ffffff'], 9);
+  fxKick(d * 1.5, 0);
+}
+function fxArmor(b) { if (!fxLive) return; fxRing(b.x, b.y - b.h / 2, b.h * 0.5, b.h * 0.95, 6, '#ffb347', 10); fxKick(0, 2); }
+function fxKO(x, y, color) { if (!fxLive) return; fxFlash(0.35); fxRing(x, y, 20, 320, 14, '#ffffff', 22); const a = Math.atan2(cam.y - y, cam.x - x); fxKick(Math.cos(a) * 18, Math.sin(a) * 18); }
+function fxSuper(f) { if (!fxLive) return; fxFlash(0.3, '255,230,120'); fxRing(f.x, f.y - f.h / 2, 10, 150, 8, '#ffe680', 18); }
+function fxShot(f, p) {
+  if (!fxLive) return;
+  const F = Math.sign(p.vx) || f.facing, big = p.big, k = clamp(p.r / 24, 0.3, 1.3);
+  fxRing(p.x, p.y, 3, 14 + p.r * 1.1, big ? 5 : 3, '#e9ffc2', big ? 11 : 7);
+  for (let i = 0; i < fxN(big ? 9 : 5); i++) fxAdd({ t: 'puff', x: p.x, y: p.y, vx: F * vrnd(1.5, 5) * k, vy: vrnd(-1.6, 1.6), drag: 0.86, g: 0, r0: 3 * k, r1: vrnd(8, 14) * k, color: '230,255,190', a: 0.6, life: Math.round(vrnd(10, 16)) });
+  if (big) { fxFlash(0.08, '216,255,138'); fxKick(-F * 3, 0); }
+  const s = FX.st[f.pi]; if (s) s.recoil = big ? 9 : 5;
+}
+// ---- 毎tick: 状態の変化を見て(着地・ダッシュ・振りはじめ・ため)演出と音を出す ----
+function fxObserve(f) {
+  let s = FX.st[f.pi];
+  if (!s || s.f !== f) s = FX.st[f.pi] = { f, seq: f.atkSeq || 0, act: false, state: f.state, gr: f.grounded, vy: 0, chg: 0, recoil: 0, fade: 0, hb: null, m: null, slashT: 0 };
+  if ((f.atkSeq || 0) !== s.seq) { s.seq = f.atkSeq || 0; s.act = false; }
+  const m = f.move, hb = f.state === 'attack' && m && !m.super ? activeHitbox(f) : null;
+  if (hb && !s.act) { s.act = true; fxSwingStart(f, m, hb, s); }
+  if (hb) { s.hb = hb; s.m = m; s.fade = 7; s.actT = (s.actT || 0) + 1; if (f.c.id === 'ninjin' && !m.grab && game.hitstop === 0 && ++s.slashT % 2 === 0) fxSlash(f, hb, m); }
+  else { s.act = false; s.actT = 0; if (s.fade > 0) s.fade--; }
+  // 着地の土ぼこり(重いキャラほど大きい)
+  if (f.grounded && !s.gr && f.state !== 'respawn' && f.state !== 'dead') {
+    const v = clamp(s.vy / 14, 0.25, 1.3), heavy = f.st.weight >= 120;
+    fxDust(f.x, f.y, fxN(heavy ? 8 : 4 + 3 * v), (heavy ? 16 : 10) * (0.7 + 0.5 * v));
+    if (heavy && v > 0.5) { fxRing(f.x, f.y, 10, 70, 4, 'rgba(220,226,255,0.8)', 12, 0.22); sfx('thud'); fxKick(0, 3 * v); }
+  }
+  // ダッシュ・振り向きの土ぼこり
+  if (f.grounded && f.state === 'run' && (s.state !== 'run' || Math.sign(f.vx) !== Math.sign(s.vx || 0)) && Math.abs(f.vx) > 1) fxDust(f.x - Math.sign(f.vx) * f.w * 0.3, f.y, fxN(4), 11, -Math.sign(f.vx));
+  if (f.grounded && f.state === 'run' && f.st.weight >= 120 && f.anim % 14 === 0) fxDust(f.x, f.y, 1, 9);
+  if (f.grounded && f.state === 'attack' && m && m.id === 'dash' && hb && game.hitstop === 0 && f.anim % 2 === 0) fxDust(f.x - f.facing * f.w * 0.4, f.y, 1, m.slide ? 13 : 9, -f.facing);
+  // エダマメのため: 光が集まる+だんだん高くなる音
+  if (f.state === 'charge') {
+    const step = Math.floor(f.chg / 6);
+    if (step > s.chg) { s.chg = step; sfx('charge', f.chg / CHG_MAX); }
+    if (f.chg === CHG_BIG) fxRing(f.x + f.facing * (f.w / 2 + 8), f.y - 30 * f.h / 58, 4, 34, 3, '#e9ffc2', 10);
+    if (game.hitstop === 0 && f.t % 2 === 0) { const bx = f.x + f.facing * (f.w / 2 + 8), by = f.y - 30 * f.h / 58, a = vrnd(0, 6.3), R = 34 + 16 * f.chg / CHG_MAX; fxAdd({ t: 'spark', x: bx + Math.cos(a) * R, y: by + Math.sin(a) * R, vx: -Math.cos(a) * R / 7, vy: -Math.sin(a) * R / 7, drag: 0.9, g: 0, w: 2.2, color: '#e9ffc2', life: 7 }); }
+  } else s.chg = 0;
+  if (s.recoil > 0) s.recoil -= 1;
+  s.gr = f.grounded; s.vy = f.vy + f.kby; s.state = f.state; s.vx = f.vx;
+}
+// 判定が出た最初のフレーム: キャラ別の空振り音+エフェクト
+function fxSwingStart(f, m, hb, s) {
+  const id = f.c.id, strong = m.kind === 'strong', F = f.facing;
+  sfx('swoosh', { id, strong });
+  if (m.grab) return;
+  const tip = fxTip(f, m, hb);
+  if (id === 'mug') {
+    fxRing(hb.cx, hb.cy, 10, Math.max(hb.w, hb.h) * (strong ? 0.85 : 0.55), strong ? 9 : 5, strong ? '#ffe2b8' : '#ffffff', strong ? 14 : 9);
+    if (strong) {
+      if (f.grounded) { fxRing(f.x + F * 20, f.y, 14, 140, 5, 'rgba(255,226,184,0.9)', 16, 0.2); fxDust(f.x + F * 30, f.y, fxN(8), 16); }
+      fxKick(F * 4, 2.5); fxFlash(0.06, '255,226,184');
+    }
+  } else if (id === 'brush') {
+    fxAdd({ t: 'star', x: tip.x, y: tip.y, vx: 0, vy: 0, drag: 1, g: 0, r: strong ? 22 : 14, rot: 0.785, n: 4, color: '#e6fff7', life: 8 });
+  } else if (id === 'ninjin') {
+    fxSlash(f, hb, m); if (strong) fxSlash(f, hb, m);
+  }
+}
+function fxSlash(f, hb, m) {
+  const strong = m.kind === 'strong', R = Math.max(12, Math.min(hb.w, hb.h) * vrnd(0.45, 0.7) + (strong ? 6 : 0));
+  fxAdd({ t: 'slash', x: hb.cx + vrnd(-hb.w * 0.25, hb.w * 0.25), y: hb.cy + vrnd(-hb.h * 0.25, hb.h * 0.25), vx: f.facing * 1.5, vy: 0, drag: 0.85, g: 0, r: R, ang: vrnd(-1.2, 1.2) + (f.facing > 0 ? 0 : Math.PI), color: vrnd(0, 1) < 0.5 ? '#ffffff' : '#ffd23d', life: 5 });
+}
+// 技の向き(前/上/全方位)と、判定のいちばん先っぽ
+function fxDirOf(f, m, hb) { if (m.vert) return 'up'; return Math.abs(hb.cx - f.x) < hb.w * 0.2 ? 'both' : 'fwd'; }
+function fxTip(f, m, hb) { const d = fxDirOf(f, m, hb); return d === 'up' ? { x: hb.cx, y: hb.y } : { x: f.facing > 0 ? hb.x + hb.w : hb.x, y: hb.cy }; }
+function fxAng(f, m, hb) { const d = fxDirOf(f, m, hb); return d === 'up' ? -Math.PI / 2 : d === 'both' ? (f.facing > 0 ? 0.5 : Math.PI - 0.5) : Math.atan2(hb.cy - (f.y - f.h * 0.6), hb.cx - f.x); }
+function updateFx() {
+  if (!fxLive) return;
+  if (game.scene === 'match' && !game.paused) {
+    for (const f of game.fighters) fxObserve(f);
+    // 豆の軌跡
+    const seen = new Set();
+    for (const p of game.projs) { seen.add(p.id); let tr = FX.trails.get(p.id); if (!tr) FX.trails.set(p.id, tr = []); if (game.hitstop === 0) { tr.push(p.x, p.y); if (tr.length > (game.mobile ? 8 : 14)) tr.splice(0, 2); } if (p.big && game.hitstop === 0 && p.t % 3 === 0) fxAdd({ t: 'dot', x: p.x - Math.sign(p.vx) * p.r, y: p.y + vrnd(-p.r * 0.5, p.r * 0.5), vx: -p.vx * 0.05, vy: vrnd(-0.5, 0.5), drag: 0.9, g: 0, r: vrnd(1.5, 3), color: '#e9ffc2', life: 14 }); }
+    for (const id of FX.trails.keys()) if (!seen.has(id)) FX.trails.delete(id);
+  }
+  if (game.hitstop <= 0) FX.vic = null;
+  // カメラの「ドンッ」: バネで戻る(見た目のオフセットだけ)
+  FX.kvx += -FX.kx * 0.32; FX.kvy += -FX.ky * 0.32; FX.kvx *= 0.62; FX.kvy *= 0.62; FX.kx += FX.kvx; FX.ky += FX.kvy;
+  if (Math.abs(FX.kx) + Math.abs(FX.ky) + Math.abs(FX.kvx) + Math.abs(FX.kvy) < 0.05) FX.kx = FX.ky = FX.kvx = FX.kvy = 0;
+  FX.flash *= 0.72; if (FX.flash < 0.01) FX.flash = 0;
+  const L = FX.list;
+  for (let i = L.length - 1; i >= 0; i--) { const p = L[i]; p.x += p.vx; p.y += p.vy; p.vx *= p.drag; p.vy = p.vy * p.drag + p.g; if (--p.life <= 0) L.splice(i, 1); }
+}
+// ---- 体の動き(ため=ちぢむ/のけぞる、発動=のびる/前に出る)。描画だけ ----
+function fxBodyPose(f, m, su) {
+  const o = { sx: 1, sy: 1, rot: 0, ox: 0 }, F = f.facing, id = f.c.id, s = FX.st[f.pi];
+  if (f.state === 'attack' && m && !m.super) {
+    const strong = m.kind === 'strong', act = m.active || 1;
+    if (f.t < su && strong) {
+      const p = f.t / su;
+      if (id === 'mug') { o.sx = 1 + 0.16 * p; o.sy = 1 - 0.17 * p; o.ox = -F * 5 * p + (p > 0.6 ? Math.sin(f.t * 2.3) * 1.6 : 0); o.rot = -F * 0.06 * p; }
+      else if (id === 'brush') { o.ox = -F * 7 * p; o.sy = 1 + 0.05 * p; o.sx = 1 - 0.05 * p; }
+      else if (id === 'neko') { o.sy = 1 - 0.14 * p; o.sx = 1 + 0.09 * p; }
+      else if (id === 'ninjin') { o.sx = 1 + 0.05 * p; o.sy = 1 - 0.06 * p; o.ox = -F * 2 * p; }
+      else { o.sy = 1 - 0.07 * p; o.sx = 1 + 0.04 * p; }
+    } else if (f.t >= su && f.t < su + act + 4) {
+      const e = 1 - (f.t - su) / (act + 4), up = m.vert;
+      const amt = id === 'mug' ? (strong ? 1 : 0.5) : id === 'brush' ? 0.55 : id === 'neko' ? 0.6 : id === 'ninjin' ? 0.45 : 0.35;
+      if (up) { o.sy = 1 + 0.18 * amt * e; o.sx = 1 - 0.12 * amt * e; }
+      else { o.sx = 1 + 0.16 * amt * e; o.sy = 1 - 0.08 * amt * e; o.ox = F * (id === 'brush' ? 12 : id === 'mug' ? 9 : 6) * amt * e; o.rot = F * 0.12 * amt * e; }
+    }
+  }
+  if (s && s.recoil > 0) { o.ox -= F * s.recoil * 0.8; o.sx *= 1 - 0.015 * s.recoil; }
+  if (FX.vic && FX.vic.pi === f.pi && game.hitstop > 0) o.ox += ((frameCount & 1) ? 1 : -1) * FX.vic.amp;
+  return o;
+}
+// ---- 振りの軌跡(判定が出ている間+消えたあと少し残る) ----
+function fxDrawSwing(f) {
+  const s = FX.st[f.pi]; if (!s || !s.hb || s.fade <= 0 || !s.m || s.m.grab || s.m.super) return;
+  const live = f.state === 'attack' && f.move === s.m && activeHitbox(f);
+  const hb = live || s.hb, m = s.m, a = live ? 1 : s.fade / 7, F = f.facing, id = f.c.id, strong = m.kind === 'strong';
+  const dir = fxDirOf(f, m, hb);
+  ctx.save(); ctx.lineCap = 'round'; ctx.globalAlpha = a;
+  if (id === 'brush') {
+    // 毛先の突きスジ: 体から判定の先端までピタッと伸びる(=届く距離がひと目でわかる)
+    const n = strong ? 6 : 4, k = live ? clamp((s.actT || 1) / 2, 0.35, 1) : 1;
+    if (dir === 'up') {
+      const y0 = f.y - f.h * 0.7, y1 = lerp(y0, hb.y, k);
+      for (let i = 0; i < n; i++) { const x = hb.cx + (i - (n - 1) / 2) * hb.w / n * 0.8, yy = y1 + (i % 2) * 6; ctx.strokeStyle = i % 2 ? 'rgba(201,251,233,0.9)' : 'rgba(255,255,255,0.95)'; ctx.lineWidth = i % 3 ? 2 : 3; ctx.beginPath(); ctx.moveTo(x, lerp(y0, yy, 0.25)); ctx.lineTo(x, yy); ctx.stroke(); }
+    } else {
+      const sides = dir === 'both' ? [-1, 1] : [F];
+      for (const d of sides) {
+        const x0 = f.x + d * f.w * 0.2, xt = d > 0 ? hb.x + hb.w : hb.x, x1 = lerp(x0, xt, k);
+        const g = ctx.createLinearGradient(x0, 0, xt, 0); g.addColorStop(0, 'rgba(201,251,233,0)'); g.addColorStop(0.55, 'rgba(201,251,233,0.55)'); g.addColorStop(1, 'rgba(255,255,255,1)');
+        ctx.strokeStyle = g;
+        for (let i = 0; i < n; i++) { const y = hb.cy + (i - (n - 1) / 2) * Math.max(6, hb.h * 1.7 / n), back = (i * 7) % 3 * 6; ctx.lineWidth = i % 2 ? 2 : 3.2; ctx.beginPath(); ctx.moveTo(lerp(x0, x1, 0.2 + (i % 3) * 0.08), y); ctx.lineTo(x1 - d * back, y); ctx.stroke(); }
+        // 先端(先っぽ当て)ゾーン
+        if (m.tip && live) { const z0 = d > 0 ? hb.x + hb.w * 0.55 : hb.x, zw = hb.w * 0.45; ctx.fillStyle = 'rgba(159,245,220,0.22)'; rr(z0, hb.y - 2, zw, hb.h + 4, 6); ctx.fill(); ctx.strokeStyle = 'rgba(201,251,233,0.8)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+        // 先端のきらり
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x1, hb.cy, strong ? 4 : 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else if (id === 'mug') {
+    // 重い一振り: 太い弧
+    const cx = f.x, cy = f.y - f.h * 0.55, R = Math.max(30, Math.hypot(hb.cx - cx, hb.cy - cy) + Math.max(hb.w, hb.h) * 0.2), ang = fxAng(f, m, hb);
+    const span = strong ? 1.6 : 1.0, a1 = ang + F * 0.3, a0 = a1 - F * span;
+    ctx.strokeStyle = 'rgba(107,62,31,0.35)'; ctx.lineWidth = strong ? 26 : 16; ctx.beginPath(); ctx.arc(cx, cy, R, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,240,220,0.85)'; ctx.lineWidth = strong ? 6 : 4; ctx.beginPath(); ctx.arc(cx, cy, R + (strong ? 9 : 6), Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+  } else if (id === 'neko') {
+    // 3本のツメあと(弧)
+    const ang = fxAng(f, m, hb), R = Math.max(hb.w, hb.h) * 0.55, cx = hb.cx - Math.cos(ang) * R * 0.5, cy = hb.cy - Math.sin(ang) * R * 0.5;
+    const k = live ? clamp((s.actT || 1) / 3, 0.3, 1) : 1, span = 1.5 * k;
+    for (let i = -1; i <= 1; i++) {
+      const r = R + i * Math.max(6, R * 0.16), a0 = ang - F * 0.75, a1 = a0 + F * span;
+      ctx.strokeStyle = 'rgba(255,143,177,0.6)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cy, r, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+  } else if (id === 'ninjin') {
+    // すばやい小さな切り口: 短い弧1本(細かい斬撃は粒で出す)
+    const ang = fxAng(f, m, hb), R = Math.hypot(hb.cx - f.x, hb.cy - (f.y - f.h * 0.6));
+    ctx.strokeStyle = 'rgba(255,210,61,0.8)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(f.x, f.y - f.h * 0.6, R, ang - 0.45, ang + 0.45); ctx.stroke();
+  } else if (id === 'edamame') {
+    const ang = fxAng(f, m, hb), R = Math.hypot(hb.cx - f.x, hb.cy - (f.y - f.h * 0.5));
+    ctx.strokeStyle = 'rgba(200,240,138,0.7)'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(f.x, f.y - f.h * 0.5, R, ang - 0.6, ang + 0.6); ctx.stroke();
+  }
+  ctx.restore();
+}
+// ためている豆のまわりの光(ためるほど大きく明るく)
+function fxDrawChargeGlow(f) {
+  const k = f.chg / CHG_MAX, bx = f.x + f.facing * (f.w / 2 + 8), by = f.y - 30 * f.h / 58, pul = 0.85 + 0.15 * Math.sin(frameCount * (0.3 + 0.4 * k));
+  const R = (16 + 46 * k) * pul;
+  const g = ctx.createRadialGradient(bx, by, 2, bx, by, R);
+  g.addColorStop(0, 'rgba(240,255,200,' + (0.35 + 0.45 * k) + ')'); g.addColorStop(0.5, 'rgba(190,240,110,' + (0.18 + 0.3 * k) + ')'); g.addColorStop(1, 'rgba(160,230,80,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by, R, 0, Math.PI * 2); ctx.fill();
+  if (f.chg >= CHG_BIG) { ctx.strokeStyle = 'rgba(233,255,194,' + (0.4 + 0.4 * k) + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, R * 0.8, frameCount * 0.15, frameCount * 0.15 + 4.2); ctx.stroke(); }
+}
+function fxDrawBeanTrails() {
+  for (const p of game.projs) {
+    const tr = FX.trails.get(p.id); if (!tr || tr.length < 4) continue;
+    const n = tr.length / 2;
+    for (let i = 0; i < n - 1; i++) { const k = (i + 1) / n; ctx.fillStyle = p.isSuper && p.fin ? 'rgba(255,224,102,' + (0.28 * k) + ')' : 'rgba(170,230,100,' + (0.3 * k) + ')'; ctx.beginPath(); ctx.arc(tr[i * 2], tr[i * 2 + 1], p.r * (0.35 + 0.55 * k), 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+function fxDrawParticles() {
+  for (const p of FX.list) {
+    const a = p.life / p.max, e = 1 - a;
+    switch (p.t) {
+      case 'spark': ctx.globalAlpha = Math.min(1, a * 1.5); ctx.strokeStyle = p.color; ctx.lineWidth = p.w * (0.4 + 0.6 * a); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 2.2, p.y - p.vy * 2.2); ctx.stroke(); break;
+      case 'puff': ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(' + p.color + ',' + (p.a * a) + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, lerp(p.r0, p.r1, 1 - a * a), 0, Math.PI * 2); ctx.fill(); break;
+      case 'dot': ctx.globalAlpha = Math.min(1, a * 2); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); break;
+      case 'leaf': ctx.globalAlpha = Math.min(1, a * 2); ctx.fillStyle = p.color; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r * 0.45, p.rot + e * 4, 0, Math.PI * 2); ctx.fill(); break;
+      case 'ring': { const ee = 1 - (1 - e) * (1 - e); ctx.globalAlpha = a; ctx.strokeStyle = p.color; ctx.lineWidth = Math.max(0.5, p.lw * a); ctx.beginPath(); ctx.ellipse(p.x, p.y, lerp(p.r0, p.r1, ee), lerp(p.r0, p.r1, ee) * p.sy, 0, 0, Math.PI * 2); ctx.stroke(); break; }
+      case 'star': { const r = p.r * (0.6 + 0.4 * Math.min(1, e * 3)), n = p.n; ctx.globalAlpha = Math.min(1, a * 1.6); ctx.fillStyle = p.color; ctx.beginPath(); for (let i = 0; i < n * 2; i++) { const ang = p.rot + i * Math.PI / n, rr2 = i % 2 ? r * 0.28 : r; ctx.lineTo(p.x + Math.cos(ang) * rr2, p.y + Math.sin(ang) * rr2); } ctx.closePath(); ctx.fill(); break; }
+      case 'slash': { ctx.globalAlpha = Math.min(1, a * 1.4); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, p.ang - 1.1, p.ang + 1.1); ctx.arc(p.x - Math.cos(p.ang) * p.r * 0.28, p.y - Math.sin(p.ang) * p.r * 0.28, p.r * 0.95, p.ang + 1.0, p.ang - 1.0, true); ctx.closePath(); ctx.fill(); break; }
+      case 'claw': { ctx.globalAlpha = Math.min(1, a * 1.5); for (let i = -1; i <= 1; i++) { const ox = Math.cos(p.ang + Math.PI / 2) * i * p.r * 0.32, oy = Math.sin(p.ang + Math.PI / 2) * i * p.r * 0.32, dx = Math.cos(p.ang) * p.r, dy = Math.sin(p.ang) * p.r; ctx.strokeStyle = 'rgba(255,143,177,0.7)'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.x + ox - dx, p.y + oy - dy); ctx.quadraticCurveTo(p.x + ox + dy * 0.25, p.y + oy - dx * 0.25, p.x + ox + dx, p.y + oy + dy); ctx.stroke(); ctx.strokeStyle = p.color; ctx.lineWidth = 2.5; ctx.stroke(); } break; }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+// フレーム時間を見て、重ければ粒の量を自動で減らす(戻すのはゆっくり)
+function fxPerf(dt) {
+  if (!(dt > 0) || dt > 250) return;
+  FX.frEma = FX.frEma * 0.95 + dt * 0.05;
+  if (FX.frEma > 21) { if (++FX.slowN > 90 && FX.auto > 0.35) { FX.auto = Math.max(0.35, FX.auto * 0.75); FX.slowN = 0; } } else FX.slowN = 0;
+  if (FX.frEma < 17.6) { if (++FX.fastN > 600 && FX.auto < 1) { FX.auto = Math.min(1, FX.auto + 0.1); FX.fastN = 0; } } else FX.fastN = 0;
+}
+// 音のON/OFFボタン(タイトル・キャラ選択)
+function muteBtn(x, y) { pillBtn(x, y, 150, 46, muted ? '🔇 音:OFF' : '🔊 音:ON', !muted, 18, () => { initAudio(); setMuted(!muted); }, true); }
 
 // ===================== CPU(人間らしいAI) =====================
 // AIは「仮想キーボード」だけを操作する。押す/離す → 人間と同じ readInput → 同じバッファ・物理。
@@ -1499,7 +1787,7 @@ function tick() {
   if (frameCount % 30 === 0) { checkOrientation(); if (sizeKey() !== VIEW.key) resize(); }
   if (game.guide) { if (framePressed.has('Escape') || framePressed.has('Enter')) closeGuide(); updateParticles(); return; }
   if (game.scene === 'title' && frameCount === 90 && game.mobile && fsMode() === 'guide' && IS_IOS && !guideOptOut()) game.guide = true;
-  if (framePressed.has('KeyM')) muted = !muted;
+  if (framePressed.has('KeyM')) setMuted(!muted);
   if (game.fade > 0) game.fade = Math.max(0, game.fade - 0.08);
   if (game.banner && --game.banner.life <= 0) game.banner = null;
   switch (game.scene) {
@@ -1510,6 +1798,7 @@ function tick() {
     case 'result': tickResult(); break;
   }
   updateParticles();
+  updateFx();
 }
 function tickTitle() {
   const mi = menuInput();
@@ -1931,8 +2220,6 @@ function drawAttackFx(f, hb, m) {
     ctx.fillStyle = '#ff8fb1';
     ctx.beginPath(); ctx.ellipse(hb.cx, hb.cy + r * 0.2, r * 0.38, r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
     for (const k of [-1, 0, 1]) { ctx.beginPath(); ctx.arc(hb.cx + Math.cos(ang + k * 0.7) * r * 0.62, hb.cy + Math.sin(ang + k * 0.7) * r * 0.62, r * 0.17, 0, Math.PI * 2); ctx.fill(); }
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3;
-    for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(hb.x + hb.w * 0.2, hb.cy + i * hb.h * 0.25 - hb.h * 0.2); ctx.lineTo(hb.x + hb.w * 0.8, hb.cy + i * hb.h * 0.25 + hb.h * 0.2); ctx.stroke(); }
   } else if (c.id === 'ninjin') {
     // 葉っぱスラッシュ
     const n = strong ? 5 : 3;
@@ -2025,6 +2312,7 @@ function drawFighter(f) {
   if (f.state === 'spot') { sx = 0.8; }
   if (f.state === 'attack' && m && m.kind === 'strong' && f.t < su) { rot = -f.facing * 0.12; }
   if (f.state === 'attack' && m && m.id === 'recover') rot = (f.t * 0.6) * f.facing;
+  const bp = fxBodyPose(f, m, su); sx *= bp.sx; sy *= bp.sy; rot += bp.rot; if (bp.ox) ctx.translate(bp.ox, 0);
   if (rot) { ctx.translate(0, -f.h / 2); ctx.rotate(rot); ctx.translate(0, f.h / 2); }
   ctx.scale(sx, sy);
   const charging = m && f.state === 'attack' && (m.kind === 'strong' || m.super) && f.t < su && (f.t >> 2) % 2 === 0;
@@ -2040,6 +2328,7 @@ function drawFighter(f) {
   // 攻撃判定の表示(キャラらしいエフェクト)
   const hb = activeHitbox(f);
   if (hb && !m.super) drawAttackFx(f, hb, m);
+  fxDrawSwing(f);
   // シールド
   if (f.state === 'shield' || f.state === 'shieldstun') {
     const r = f.h * 0.62 * (0.45 + 0.55 * f.shieldHP / SHIELD_MAX);
@@ -2051,6 +2340,7 @@ function drawFighter(f) {
   }
   // まめ鉄砲のため・保存中のため
   if (f.state === 'charge') {
+    fxDrawChargeGlow(f);
     const k = f.chg / CHG_MAX, r = 8 + 16 * k, bx = f.x + f.facing * (f.w / 2 + 8), by = f.y - 30 * f.h / 58;
     ctx.strokeStyle = 'rgba(216,255,138,' + (0.4 + 0.4 * k) + ')'; ctx.lineWidth = 3;
     for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + f.t * 0.2, r0 = r + 26 - (f.t * 2 % 20); ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * r0, by + Math.sin(a) * r0); ctx.lineTo(bx + Math.cos(a) * (r0 - 8), by + Math.sin(a) * (r0 - 8)); ctx.stroke(); }
@@ -2300,6 +2590,7 @@ function drawOffscreen() {
 
 // ===================== シーン描画 =====================
 function render() {
+  fxLive = true;
   ctx.setTransform(baseTf, 0, 0, baseTf, baseX, baseY);
   uiBtns = [];
   switch (game.scene) {
@@ -2310,7 +2601,7 @@ function render() {
     case 'result': renderResult(); break;
   }
   if (game.fade > 0) fullFill('rgba(11,14,28,' + game.fade + ')');
-  if (muted) text('🔇 ミュート中 (M)', W - 16, 20, 14, '#ffffffaa', 'right', '600');
+  if (muted && game.scene !== 'title' && game.scene !== 'select') text('🔇 ミュート中 (M)', W - 16, 20, 14, '#ffffffaa', 'right', '600');
   if (game.guide) renderGuide();
 }
 // ===== iPhone など: 「ホーム画面に追加」ガイド =====
@@ -2484,6 +2775,7 @@ function renderTitle() {
   if (fm === 'api' || (fm === 'guide' && game.mobile)) pillBtn(W - 224, 636, 200, 50, fsButtonLabel(), false, 19, fullscreenAction, true);
   else if (fm === 'app' && game.mobile) { ctx.fillStyle = 'rgba(10,12,28,0.5)'; rr(W - 224, 636, 200, 50, 25); ctx.fill(); text('✓ アプリで全画面中', W - 124, 661, 16, '#b8f2e6', 'center', '800'); }
   if (installPrompt && fm !== 'app') pillBtn(W - 224, 578, 200, 50, '📲 アプリとして追加', false, 17, doInstall, true);
+  muteBtn(W - 174, 18);
   text(game.mobile ? 'タップでえらんでね(横向きがおすすめ)' : 'W/S・↑/↓ でえらぶ　　F・,(カンマ)・Enter で決定　　M で音のON/OFF', W / 2, 690, 17, '#c9d1ff', 'center', '600');
 }
 function drawControls(pi, x, y) {
@@ -2582,6 +2874,7 @@ function renderSelect() {
       if (es === 0) game.editSlot = 1;
     });
   }
+  muteBtn(W - 166, 16);
   if (mob) { renderSelectMobile(); return; }
   // 下部パネル
   for (let i = 0; i < 2; i++) {
@@ -2649,7 +2942,8 @@ function renderSelectMobile() {
 function renderMatch() {
   drawBackground(true);
   ctx.save();
-  ctx.translate(W / 2 + cam.sx, H / 2 + cam.sy); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+  const shk = fxMotion();
+  ctx.translate(W / 2 + cam.sx * shk + FX.kx, H / 2 + cam.sy * shk + FX.ky); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
   drawStage();
   const fs = game.fighters;
   const sfx0 = game.superFx;
@@ -2659,10 +2953,13 @@ function renderMatch() {
   const order = [...fs].sort((a, b) => (a.state === 'attack') - (b.state === 'attack'));
   fs.forEach(drawSuperTrail);
   order.forEach(drawFighter);
+  fxDrawBeanTrails();
   for (const p of game.projs) drawBean(p.x, p.y, p.r, p.vx, { glow: p.big, gold: p.isSuper && p.fin });
   fs.forEach(drawSuperFx);
   drawParticles();
+  fxDrawParticles();
   ctx.restore();
+  if (FX.flash > 0.01) fullFill('rgba(' + FX.flashCol + ',' + FX.flash.toFixed(3) + ')');
   if (sfx0) drawCutIn(sfx0);
   drawOffscreen();
   drawHUD();
@@ -2729,6 +3026,7 @@ function renderResult() {
 // ===================== メインループ(固定60fps) =====================
 let last = performance.now(), acc = 0;
 function frame(now) {
+  fxPerf(now - last);
   acc += Math.min(200, now - last); last = now;
   let n = 0;
   while (acc >= STEP && n < 8) { tick(); acc -= STEP; n++; }
@@ -2758,7 +3056,7 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     }).catch(() => {});
   });
 }
-window.__NF = { spawnBean, beanStats, armorOn, CHG_MAX, VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
+window.__NF = { FX, fxQ, setMuted, getMuted: () => muted, getAC: () => AC, spawnBean, beanStats, armorOn, CHG_MAX, VIEW, IOS_BROWSER, IS_IOS, fsMode, isStandalone, getBounds: () => ({ VX0, VY0, VX1, VY1, SX0, SY0, SX1, SY1 }), game, CHARS, MOVES, tick, keys, pressedQ, cam, drawCharBody, drawAttackFx, boxOf, ctx, startMatch, simMatch, CPU_LV, touch, TC, getTouchOut: () => touchOut, getUi: () => uiBtns, setMobile, simStep: () => { tickMatch(); particles.length = 0; game.banner = null; } };
 </script>
 </body>
 </html>

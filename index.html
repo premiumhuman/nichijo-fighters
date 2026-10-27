@@ -331,7 +331,7 @@ const CHARS = [
   // moves: 共通の技データ(MOVES)をキャラごとに上書き → 発生・後スキ・判定の形・ふっとび方がキャラで大きく違う
   { id: 'neko', name: 'ネコ', type: 'エアリアル', desc: '3段ジャンプと速い空中技。|とびかかりで相手を翻弄', color: '#ffb15c', alt: '#b8bfcc',
     w: 44, h: 60, run: 6.8, gAcc: 1.3, air: 5.8, aAcc: 0.8, jump: 14.6, dj: 13.2, grav: 0.66, fall: 10.8, ff: 16.5,
-    weight: 84, jumps: 3, power: 1.0, reach: 1.0, lag: 0, endlag: 0.95, bars: [4, 3, 2, 5, 3],
+    weight: 86, jumps: 3, power: 1.0, reach: 1.0, lag: 0, endlag: 0.95, bars: [4, 3, 2, 5, 3],
     moves: {
       nair: { startup: 3, active: 6, rec: 7, land: 4, dmg: 5 },
       uair: { startup: 4, rec: 7, land: 4 },
@@ -365,8 +365,8 @@ const CHARS = [
       grab: { startup: 7, box: { x: 36, y: -38, w: 46, h: 36 } }
     } },
   { id: 'brush', name: 'ハブラシ', type: 'リーチ', desc: '細長いブラシで間合いを制す。|先っぽを当てると強い', color: '#2ec4b6', alt: '#ff7eb6',
-    w: 36, h: 70, run: 6.5, gAcc: 1.1, air: 5.2, aAcc: 0.55, jump: 13.2, dj: 11.6, grav: 0.56, fall: 9.2, ff: 14.5,
-    weight: 104, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 1.0, meterGain: 1.3, bars: [2, 3, 3, 2, 5],
+    w: 36, h: 67, run: 6.5, gAcc: 1.1, air: 5.2, aAcc: 0.55, jump: 13.2, dj: 11.6, grav: 0.56, fall: 9.2, ff: 14.5,
+    weight: 103, jumps: 2, power: 1.0, reach: 1.0, lag: 0, endlag: 1.0, upB: 1.0, meterGain: 1.3, bars: [2, 3, 3, 2, 5],
     moves: {
       jab: { startup: 6, active: 3, rec: 15, box: { x: 64, y: -50, w: 60, h: 16 }, dmg: 3.6, base: 3.8, gr: 0.03, ang: 30, tip: true },
       utilt: { startup: 7, box: { x: 12, y: -104, w: 38, h: 72 }, dmg: 6 },
@@ -939,7 +939,7 @@ function updateProjs() {
     const a = fs[p.pi], b = fs[1 - p.pi], box = projBox(p);
     // 相手の攻撃で打ち消せる(大きな豆は弱攻撃では消えない / 必殺技の豆は消えない)
     const hb = activeHitbox(b) || (!p.big ? sweepBox(b) : null);
-    if (hb && !p.isSuper && overlap(hb, box) && !(p.big && p.lv >= CHG_MAX * 0.66 && b.move.kind === 'light' && !b.move.tip)) { p.dead = true; b.stats.clash = (b.stats.clash || 0) + 1; if (b.move.kind === 'light') b.vx *= 0.15; hitSpark(p.x, p.y, 0.5, '#d8ff8a'); sfx('hit'); continue; }
+    if (hb && !p.isSuper && overlap(hb, box) && !(p.big && p.lv >= CHG_MAX * 0.66 && b.move.kind === 'light' && !b.move.tip)) { p.dead = true; b.stats.clash = (b.stats.clash || 0) + 1; if (b.move.kind === 'light' && !b.move.tip) { b.vx = 0; b.hitIds.add(p.pi); } hitSpark(p.x, p.y, 0.5, '#d8ff8a'); sfx('hit'); continue; }
     if (isIntangible(b) || !overlap(box, hurtOf(b))) continue;
     p.dead = true;
     const m = p, dir = Math.sign(p.vx) || a.facing;
@@ -1337,7 +1337,7 @@ class CpuAI {
     // 近い: 後ろへ跳んで空中まめ撃ち(向きはそのまま)で離れる
     if (adx < 170) {
       // 走って突っ込んでくる相手には、置き豆(発生の早い小豆)で止める
-      if (v.state === 'run' && Math.sign(v.vx) === -d && adx > 50 && Math.abs(dy) < 40 && myBeans(f).small < 1 && Math.random() < 0.25 + 0.45 * P.read) {
+      if (v.state === 'run' && Math.sign(v.vx) === -d && adx > 50 && Math.abs(dy) < 40 && myBeans(f).small < 1 && Math.random() < 0.2 + 0.6 * P.read) {
         this.hold.g = 0; this.setMove(0); if (f.facing !== d) this.tap(this.dk(d), 2, 0); this.tap('s', 3, 1); this.busy(ri(12, 16)); return true;
       }
       if (adx > 50 && Math.abs(dy) < 50 && v.state !== 'attack' && Math.random() < 0.18 + 0.2 * P.read) {

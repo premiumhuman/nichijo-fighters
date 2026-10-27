@@ -480,7 +480,7 @@ const SUPERS = {
     boxAt(f, at) { const len = Math.min(600, 140 + at * 95), hs = f.h / 66, x0 = f.x + f.facing * 26, cy = f.y - 36 * hs; return { x: f.facing > 0 ? x0 : x0 - len, y: cy - 25, w: len, h: 50, cx: x0 + f.facing * len / 2, cy }; } },
   mug: { name: '熱々コーヒー噴火', startup: 28, active: 22, rec: 38, multi: 3, finFrom: 18, sfx: 'geyser', rel: true, box: { x: 0, y: -70, w: 250, h: 200 },
     small: { dmg: 4, base: 3, gr: 0, ang: 88, rel: true, shieldMul: 0.5, carry: (a, b) => { b.kbx = (a.x - b.x) * 0.05; b.kby = -2.4; } },
-    fin: { dmg: 12, base: 12.9, gr: 0.223, ang: 60, rel: true, kind: 'strong' },
+    fin: { dmg: 12, base: 13.05, gr: 0.227, ang: 60, rel: true, kind: 'strong' },
     boxAt(f, at) { const k = Math.min(1, 0.55 + at * 0.09), w = 230 * k, h = 200 * k, cy = f.y - h / 2 + 10; return { x: f.x - w / 2, y: cy - h / 2, w, h, cx: f.x, cy }; } },
   brush: { name: 'ミントブラスト', startup: 24, active: 32, rec: 30, multi: 999, finFrom: 0, sfx: 'mint', box: { x: 300, y: -70, w: 110, h: 170 },
     lockSup: { dmg0: 6, max: 40, every: 0, dmg: 0, kind: 'ice' },
@@ -521,7 +521,7 @@ for (const c of CHARS) {
 const CHG_MAX = 45, CHG_BIG = 15;
 function beanStats(lv) { const k = clamp(lv / CHG_MAX, 0, 1); return { r: 9 + 15 * k, sp: 14 - 4 * k, dmg: 5.4 + 12.6 * k, base: 5.2 + 5.4 * k, gr: 0.03 + 0.16 * k, ang: 30 + 8 * k, life: 62 + 30 * k, kind: k > 0.6 ? 'strong' : 'light', big: lv >= CHG_BIG }; }
 const THROW = { dmg: 9, base: 7.2, gr: 0.115, ang: 42 };
-const KB_GROWTH = 1.2; // ダメージ%によるふっとびの伸び(全キャラ共通)
+const KB_GROWTH = 1.2; // ダメージ%によるふっとびの伸び(全キャラ共通・必殺技には掛けない: 必殺技は tools/sim/ko.js で 70%≒半分撃墜に合わせてある)
 const BUF = 6, JUMPSQUAT = 3, SHIELD_MAX = 50, KB_DECAY = 0.42;
 
 // ===================== ステージ =====================
@@ -1055,7 +1055,7 @@ function applyDamage(a, b, m, dir, isThrow) {
   a.stats.dealt += dmg; b.stats.maxPct = Math.max(b.stats.maxPct, b.percent);
   if (!m.noMeter) { a.meter = Math.min(SUPER_MAX, a.meter + dmg * SUPER_GAIN_DEAL * (a.st.meterGain || 1)); b.meter = Math.min(SUPER_MAX, b.meter + dmg * SUPER_GAIN_TAKE * (b.st.meterGain || 1)); }
   const wf = Math.sqrt(100 / b.st.weight);
-  const kb = (m.base * (0.75 + 0.25 * pw) + b.percent * m.gr * KB_GROWTH) * wf;
+  const kb = (m.base * (0.75 + 0.25 * pw) + b.percent * m.gr * (m.isSuper ? 1 : KB_GROWTH)) * wf;
   const ang = m.ang * Math.PI / 180;
   b.kbx = Math.cos(ang) * kb * dir; b.kby = -Math.sin(ang) * kb;
   if (b.grounded && b.kby > -2) b.kby = -2;
